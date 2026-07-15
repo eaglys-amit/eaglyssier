@@ -1,0 +1,29 @@
+{# Deliverables produced in the scope + data-quality flags. #}
+<section>
+  <h2>Deliverables</h2>
+  {% if ctx.deliverables %}
+  <div class="card">
+    <table>
+      <thead><tr><th>Deliverable</th><th>Status</th><th>Linked tasks</th></tr></thead>
+      <tbody>
+        {% for d in ctx.deliverables %}
+        <tr>
+          <td><strong>{{ d.name }}</strong>{% if d.description %}<div class="muted" style="font-size:12px">{{ d.description }}</div>{% endif %}</td>
+          <td><span class="pill {{ 'done' if d.status == 'done' else 'in_progress' }}">{{ d.status }}</span></td>
+          <td class="muted" style="font-size:12px">{{ d.linked_task_keys|join(', ') if d.linked_task_keys else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No deliverables recorded for this scope.</p>
+  {% endif %}
+
+  <h3>Data quality</h3>
+  <div class="kpis">
+    <div class="kpi"><div class="val flag">{{ ctx.data_quality.tasks_without_points }}</div><div class="lbl">Tasks without SP</div></div>
+    <div class="kpi"><div class="val flag">{{ ctx.data_quality.unassigned_tasks }}</div><div class="lbl">Unassigned tasks</div></div>
+    <div class="kpi"><div class="val flag">{{ ctx.data_quality.reopened_tasks }}</div><div class="lbl">Reopened tasks</div></div>
+  </div>
+</section>

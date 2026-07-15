@@ -1,0 +1,15 @@
+{# Project closing review — objective, delivery-focused composition of sections.
+   Reuses the same shared sections/macros as the sprint report. #}
+{% extends "base.html.j2" %}
+{% block page_title %}{{ ctx.title }}{% endblock %}
+{% block content %}
+  {% include "reports/_report_head.html.j2" %}
+  {% include "sections/executive_summary.html.j2" %}
+  {% include "sections/project_overview.html.j2" %}
+  {% include "sections/sprint_breakdown.html.j2" %}
+  {% include "sections/task_breakdown.html.j2" %}
+  {% include "sections/flow_metrics.html.j2" %}
+  {% include "sections/member_breakdown.html.j2" %}
+  {% include "sections/git_contribution.html.j2" %}
+  {% include "sections/deliverables.html.j2" %}
+{% endblock %}

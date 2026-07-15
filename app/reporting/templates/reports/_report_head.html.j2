@@ -1,0 +1,23 @@
+{# Shared report header used by every report type. #}
+<div class="page-head">
+  <div>
+    <h1>{{ ctx.title }}</h1>
+    <div class="sub">
+      {{ ctx.project.name }}{% if ctx.project.key %} ({{ ctx.project.key }}){% endif %}
+      · Generated {{ ctx.generated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+    </div>
+  </div>
+</div>
+{% if ctx.scope_label %}
+<div class="card"><strong>{{ ctx.scope_label }}</strong></div>
+{% endif %}
+{% if ctx.sprint %}
+<div class="card">
+  <strong>{{ ctx.sprint.name }}</strong>
+  {% if ctx.sprint.state %}<span class="pill todo">{{ ctx.sprint.state }}</span>{% endif %}
+  <div class="sub">
+    {{ ctx.sprint.start_date or '—' }} → {{ ctx.sprint.end_date or '—' }}
+  </div>
+  {% if ctx.sprint.goal %}<div class="muted" style="margin-top:6px">{{ ctx.sprint.goal }}</div>{% endif %}
+</div>
+{% endif %}

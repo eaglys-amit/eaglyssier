@@ -1,0 +1,15 @@
+{# Render a sync run's stats dict as clean labeled chips instead of raw JSON. #}
+{% macro sync_stats(stats) %}
+{% set labels = {
+  'sprints': 'sprints', 'tasks': 'tasks', 'repos': 'repos',
+  'commits': 'commits', 'pull_requests': 'PRs', 'reviews': 'reviews',
+  'repos_removed': 'removed'
+} %}
+{% if stats %}
+<span class="stat-chips">
+  {% for k, v in stats.items() %}
+    <span class="badge"><strong>{{ v }}</strong> {{ labels.get(k, k|replace('_', ' ')) }}</span>
+  {% endfor %}
+</span>
+{% endif %}
+{% endmacro %}

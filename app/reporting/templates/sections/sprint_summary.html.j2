@@ -1,0 +1,20 @@
+{# Headline KPIs + charts for the report scope. Consumes ctx.summary / ctx.charts. #}
+{% from "macros/chart.html.j2" import chart %}
+<section>
+  <h2>Summary</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="val">{{ ctx.summary.completed_sp }}/{{ ctx.summary.assigned_sp }}</div><div class="lbl">Story points</div><div class="sub muted">{{ ctx.summary.completion_rate }}% completed</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.tasks_done }}/{{ ctx.summary.total_tasks }}</div><div class="lbl">Tasks done</div><div class="sub muted">{{ ctx.summary.tasks_in_progress }} in progress · {{ ctx.summary.tasks_todo }} to do</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.total_hours }}</div><div class="lbl">Hours logged</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.num_members }}</div><div class="lbl">Members</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.num_commits }}</div><div class="lbl">Commits</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.num_prs }}</div><div class="lbl">Pull requests</div></div>
+  </div>
+
+  {% if ctx.charts.get('story_points') %}
+  <div class="card" style="margin-top:16px">
+    <h3>Story points — assigned vs completed</h3>
+    {{ chart(ctx.charts['story_points']) }}
+  </div>
+  {% endif %}
+</section>

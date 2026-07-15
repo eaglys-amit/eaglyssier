@@ -1,0 +1,22 @@
+{# Project-level overview KPIs for the closing review. #}
+<section>
+  <h2>Project overview</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="val">{{ ctx.num_sprints }}</div><div class="lbl">Sprints</div>
+      {% if ctx.duration_days %}<div class="sub muted">{{ ctx.duration_days }} days</div>{% endif %}</div>
+    <div class="kpi"><div class="val">{{ ctx.summary.completed_sp }}/{{ ctx.summary.assigned_sp }}</div><div class="lbl">Story points</div><div class="sub muted">{{ ctx.summary.completion_rate }}% delivered</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.tasks_done }}/{{ ctx.summary.total_tasks }}</div><div class="lbl">Tasks completed</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.total_hours }}</div><div class="lbl">Hours logged</div></div>
+    <div class="kpi"><div class="val">{{ ctx.deliverables|length }}</div><div class="lbl">Deliverables</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.num_members }}</div><div class="lbl">Contributors</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.num_commits }}</div><div class="lbl">Commits</div></div>
+    <div class="kpi"><div class="val">{{ ctx.summary.num_prs }}</div><div class="lbl">Pull requests</div></div>
+    <div class="kpi"><div class="val">{{ ctx.scope_added_tasks }}</div><div class="lbl">Scope added (tasks)</div>
+      <div class="sub muted">created after kickoff</div></div>
+    <div class="kpi"><div class="val">{{ ctx.scope_growth_pct }}%</div><div class="lbl">Scope growth</div>
+      <div class="sub muted">+{{ ctx.scope_added_sp }} SP vs {{ ctx.scope_baseline_sp }} baseline</div></div>
+  </div>
+  {% if ctx.project_start and ctx.project_end %}
+  <p class="sub" style="margin-top:10px">Timeline: {{ ctx.project_start }} → {{ ctx.project_end }}</p>
+  {% endif %}
+</section>

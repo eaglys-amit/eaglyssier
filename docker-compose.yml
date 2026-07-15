@@ -1,0 +1,106 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-reports}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reports}
+      POSTGRES_DB: ${POSTGRES_DB:-reports}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Host port is overridable to avoid clashing with another local Postgres;
+      # the app always reaches the DB over the internal network (db:5432).
+      - "${DB_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reports}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # RustFS runs as non-root uid 10001, so the data volume must be owned by it
+  # before the server starts (otherwise: "[FATAL] ... Volume not found").
+  rustfs_perms:
+    image: alpine
+    user: root
+    volumes:
+      - rustfsdata:/data
+    command: chown -R 10001:10001 /data
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    depends_on:
+      rustfs_perms:
+        condition: service_completed_successfully
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+    volumes:
+      - rustfsdata:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-reports}:${POSTGRES_PASSWORD:-reports}@db:5432/${POSTGRES_DB:-reports}
+      S3_ENDPOINT_URL: http://rustfs:9000
+      S3_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      S3_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin}
+      S3_BUCKET: ${S3_BUCKET:-reports}
+      SECRET_KEY: ${SECRET_KEY:-change-me-32-byte-dev-secret-key!}
+      # Off in dev: syncs run on manual click, so the hot-reloader doesn't keep
+      # interrupting scheduled background syncs. Set RUN_SCHEDULER=true to enable.
+      RUN_SCHEDULER: ${RUN_SCHEDULER:-false}
+      UVICORN_RELOAD: ${UVICORN_RELOAD:-true}
+      PYTHONPATH: /code
+      # Long-lived Claude CLI token from `claude setup-token`. Optional here —
+      # the token can instead be pasted into the Provider tab, which stores it
+      # in the claude_config volume.
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Don't let the CLI self-update inside the container: the update is lost on
+      # recreate, and mid-update the binary briefly disappears, failing analyses
+      # with "claude not found". Update by rebuilding the image instead.
+      DISABLE_AUTOUPDATER: "1"
+      # Keep ALL Claude CLI state (.claude.json incl. onboarding/session state)
+      # inside the claude_config volume. Without this, .claude.json lives at
+      # /root/.claude.json — outside the volume — and every container recreate
+      # made the terminal re-run first-boot onboarding ("asking for login").
+      CLAUDE_CONFIG_DIR: /root/.claude
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/code
+      # Persists the Claude Code CLI OAuth login across restarts. Log in once with:
+      #   docker compose run --rm app claude login
+      - claude_config:/root/.claude
+
+  # Optional frontend dev server (hot reload). Not needed to *run* the app —
+  # the app image serves the built SPA itself. Start with:
+  #   docker compose --profile dev up web
+  # Or skip this service entirely and run `npm run dev` in frontend/ on the host.
+  web:
+    image: node:20-slim
+    profiles: ["dev"]
+    working_dir: /frontend
+    command: sh -c "npm ci && npm run dev -- --host"
+    environment:
+      VITE_PROXY_TARGET: http://app:8000
+    volumes:
+      - ./frontend:/frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  rustfsdata:
+  claude_config:

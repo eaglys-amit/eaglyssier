@@ -1,0 +1,7 @@
+{# Wrap pre-rendered SVG markup with an optional caption. #}
+{% macro chart(svg, caption=None) %}
+<div class="chart">
+  {{ svg|safe }}
+  {% if caption %}<div class="muted" style="font-size:12px; margin-top:4px;">{{ caption }}</div>{% endif %}
+</div>
+{% endmacro %}

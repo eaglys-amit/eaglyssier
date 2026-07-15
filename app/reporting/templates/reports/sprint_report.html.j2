@@ -1,0 +1,12 @@
+{# Sprint report = composition of shared sections. Adding a report type is just
+   choosing which sections to include — no new markup. #}
+{% extends "base.html.j2" %}
+{% block page_title %}{{ ctx.title }}{% endblock %}
+{% block content %}
+  {% include "reports/_report_head.html.j2" %}
+  {% include "sections/sprint_summary.html.j2" %}
+  {% include "sections/member_breakdown.html.j2" %}
+  {% include "sections/flow_metrics.html.j2" %}
+  {% include "sections/git_contribution.html.j2" %}
+  {% include "sections/deliverables.html.j2" %}
+{% endblock %}

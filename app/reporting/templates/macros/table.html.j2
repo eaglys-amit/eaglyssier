@@ -1,0 +1,32 @@
+{# Generic data table. `columns` is a list of {key, label, num?, is_pill?}.
+   `rows` is a list of dicts keyed by column key. #}
+{% macro data_table(columns, rows) %}
+<table>
+  <thead>
+    <tr>
+      {% for c in columns %}
+      <th class="{{ 'num' if c.get('num') }}">{{ c.label }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      {% for c in columns %}
+        {% if c.get('is_pill') %}
+      <td><span class="pill {{ r[c.key] }}">{{ r[c.key]|replace('_',' ') }}</span></td>
+        {% else %}
+      <td class="{{ 'num' if c.get('num') }}">{{ r[c.key] }}</td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro progress(pct) %}
+<div class="bar-track" title="{{ pct }}%">
+  <div class="bar-fill" style="width: {{ [pct, 100]|min }}%"></div>
+</div>
+{% endmacro %}

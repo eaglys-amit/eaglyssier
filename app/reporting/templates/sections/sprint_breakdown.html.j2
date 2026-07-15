@@ -1,0 +1,42 @@
+{# Sprint-by-sprint velocity for the closing review. #}
+{% from "macros/chart.html.j2" import chart %}
+{% from "macros/table.html.j2" import progress %}
+<section>
+  <h2>Sprint breakdown</h2>
+  {% if ctx.charts.get('velocity') %}
+  <div class="card">
+    <h3>Velocity — planned vs completed story points</h3>
+    {{ chart(ctx.charts['velocity']) }}
+  </div>
+  {% endif %}
+
+  {% if ctx.sprint_breakdown %}
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Sprint</th><th>Window</th>
+          <th class="num">Planned SP</th><th class="num">Completed SP</th>
+          <th style="width:130px">Completion</th>
+          <th class="num">Tasks done</th><th class="num">Spillover</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in ctx.sprint_breakdown %}
+        <tr>
+          <td><strong>{{ s.name }}</strong>{% if s.state %} <span class="muted">({{ s.state }})</span>{% endif %}</td>
+          <td class="muted" style="font-size:12px">{{ s.start_date or '—' }} → {{ s.end_date or '—' }}</td>
+          <td class="num">{{ s.planned_sp }}</td>
+          <td class="num">{{ s.completed_sp }}</td>
+          <td>{{ progress(s.completion_rate) }}<span class="muted" style="font-size:11px">{{ s.completion_rate }}%</span></td>
+          <td class="num">{{ s.tasks_done }}/{{ s.tasks_total }}</td>
+          <td class="num">{{ s.spillover_tasks }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No sprint data.</p>
+  {% endif %}
+</section>

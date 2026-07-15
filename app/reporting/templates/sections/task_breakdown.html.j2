@@ -1,0 +1,37 @@
+{# Task composition by type + by status for the closing review. #}
+<section>
+  <h2>Task breakdown</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3>By type</h3>
+      {% if ctx.type_breakdown %}
+      <table>
+        <thead><tr><th>Type</th><th class="num">Tasks</th><th class="num">Completed</th><th class="num">Story points</th></tr></thead>
+        <tbody>
+          {% for t in ctx.type_breakdown %}
+          <tr><td>{{ t.issue_type }}</td><td class="num">{{ t.count }}</td><td class="num">{{ t.done }}</td><td class="num">{{ t.sp }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="muted">No tasks.</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h3>By status</h3>
+      <table>
+        <tbody>
+          <tr><td><span class="pill done">done</span></td><td class="num">{{ ctx.summary.tasks_done }}</td></tr>
+          <tr><td><span class="pill in_progress">in progress</span></td><td class="num">{{ ctx.summary.tasks_in_progress }}</td></tr>
+          <tr><td><span class="pill todo">to do</span></td><td class="num">{{ ctx.summary.tasks_todo }}</td></tr>
+          <tr><td><strong>Total</strong></td><td class="num"><strong>{{ ctx.summary.total_tasks }}</strong></td></tr>
+        </tbody>
+      </table>
+      <h3 style="margin-top:14px">Data quality</h3>
+      <div class="kpis">
+        <div class="kpi"><div class="val flag">{{ ctx.data_quality.tasks_without_points }}</div><div class="lbl">No story points</div></div>
+        <div class="kpi"><div class="val flag">{{ ctx.data_quality.unassigned_tasks }}</div><div class="lbl">Unassigned</div></div>
+        <div class="kpi"><div class="val flag">{{ ctx.data_quality.reopened_tasks }}</div><div class="lbl">Reopened</div></div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,39 @@
+{# Delivery-flow timings: task lead time, task cycle time, PR cycle time. #}
+<section>
+  <h2>Delivery flow</h2>
+  <div class="card">
+    <div class="kpis">
+      <div class="kpi">
+        <div class="val">{{ ctx.flow.task_lead_median_days if ctx.flow.task_lead_count else '—' }}</div>
+        <div class="lbl">Median lead time (days)</div>
+        <div class="sub muted">created → resolved{% if ctx.flow.task_lead_count %} · {{ ctx.flow.task_lead_count }} tasks{% endif %}</div>
+      </div>
+      <div class="kpi">
+        <div class="val">{{ ctx.flow.task_cycle_median_days if ctx.flow.task_cycle_count else '—' }}</div>
+        <div class="lbl">Median cycle time (days)</div>
+        <div class="sub muted">in progress → done{% if ctx.flow.task_cycle_count %} · {{ ctx.flow.task_cycle_count }} tasks{% endif %}</div>
+      </div>
+      <div class="kpi">
+        <div class="val">{{ ctx.flow.pr_cycle_median_hours if ctx.flow.pr_cycle_count else '—' }}</div>
+        <div class="lbl">Median PR cycle (hours)</div>
+        <div class="sub muted">opened → merged{% if ctx.flow.pr_cycle_count %} · {{ ctx.flow.pr_cycle_count }} PRs{% endif %}</div>
+      </div>
+      <div class="kpi">
+        <div class="val">{{ ctx.flow.task_lead_avg_days if ctx.flow.task_lead_count else '—' }}</div>
+        <div class="lbl">Avg lead (days)</div>
+      </div>
+      <div class="kpi">
+        <div class="val">{{ ctx.flow.task_cycle_avg_days if ctx.flow.task_cycle_count else '—' }}</div>
+        <div class="lbl">Avg cycle (days)</div>
+      </div>
+      <div class="kpi">
+        <div class="val">{{ ctx.flow.pr_cycle_avg_hours if ctx.flow.pr_cycle_count else '—' }}</div>
+        <div class="lbl">Avg PR cycle (hours)</div>
+      </div>
+    </div>
+    {% if not ctx.flow.task_cycle_count %}
+    <p class="muted" style="font-size:12px; margin:10px 0 0">Cycle time needs Jira status-transition
+      history — re-sync Jira after this update to populate it.</p>
+    {% endif %}
+  </div>
+</section>

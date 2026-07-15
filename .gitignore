@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+
+# Environment / secrets
+.env
+
+# Frontend (React SPA)
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# OS / editor
+.DS_Store

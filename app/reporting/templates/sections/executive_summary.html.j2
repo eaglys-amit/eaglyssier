@@ -1,0 +1,42 @@
+{# Auto-generated executive summary for the project closing review. #}
+{% set active = ctx.sprint_breakdown|selectattr('planned_sp', 'gt', 0)|list %}
+{% set avg_vel = (active|map(attribute='completed_sp')|sum / (active|length or 1))|round(1) %}
+{% set total_spill = ctx.sprint_breakdown|map(attribute='spillover_tasks')|sum %}
+{% set dq = ctx.data_quality %}
+<section>
+  <div class="card callout">
+    <h2 style="margin-top:0">Executive summary</h2>
+    <ul class="exec">
+      <li>Delivered <strong>{{ ctx.summary.completed_sp }}</strong> of
+        <strong>{{ ctx.summary.assigned_sp }}</strong> story points
+        (<strong>{{ ctx.summary.completion_rate }}%</strong>)
+        across <strong>{{ ctx.num_sprints }}</strong> sprints{% if ctx.duration_days %}
+        over <strong>{{ ctx.duration_days }}</strong> days{% endif %}.</li>
+      <li>Completed <strong>{{ ctx.summary.tasks_done }}</strong> of
+        <strong>{{ ctx.summary.total_tasks }}</strong> tasks;
+        average velocity <strong>{{ avg_vel }}</strong> SP/sprint.</li>
+      <li><strong>{{ ctx.summary.num_members }}</strong> contributors ·
+        <strong>{{ ctx.summary.total_hours }}</strong> hours logged ·
+        <strong>{{ ctx.summary.num_commits }}</strong> commits ·
+        <strong>{{ ctx.deliverables|length }}</strong> deliverables.</li>
+      {% if ctx.flow.task_lead_median_days is not none or ctx.flow.pr_cycle_median_hours is not none %}
+      <li>Flow:
+        {% if ctx.flow.task_lead_median_days is not none %}median task lead time
+          <strong>{{ ctx.flow.task_lead_median_days }}</strong> days{% endif %}
+        {% if ctx.flow.pr_cycle_median_hours is not none %}{% if ctx.flow.task_lead_median_days is not none %} · {% endif %}median PR cycle
+          <strong>{{ ctx.flow.pr_cycle_median_hours }}</strong> hours{% endif %}.</li>
+      {% endif %}
+      {% if ctx.scope_added_tasks %}
+      <li>Scope change: <strong>{{ ctx.scope_added_tasks }}</strong> task(s)
+        (<strong>{{ ctx.scope_added_sp }}</strong> SP, <strong>{{ ctx.scope_growth_pct }}%</strong>
+        growth) added after kickoff.</li>
+      {% endif %}
+      {% if total_spill or dq.tasks_without_points or dq.unassigned_tasks %}
+      <li class="flag">Watch-outs:
+        {{ total_spill }} spillover task(s){% if dq.tasks_without_points %},
+        {{ dq.tasks_without_points }} without story points{% endif %}{% if dq.unassigned_tasks %},
+        {{ dq.unassigned_tasks }} unassigned{% endif %}.</li>
+      {% endif %}
+    </ul>
+  </div>
+</section>

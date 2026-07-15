@@ -1,0 +1,45 @@
+{# Per-member evaluation: SP assigned/completed, hours, tasks. Consumes ctx.members. #}
+{% from "macros/member_card.html.j2" import member_card %}
+{% from "macros/table.html.j2" import data_table, progress %}
+<section>
+  <h2>Member breakdown</h2>
+
+  {% if ctx.members %}
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Member</th>
+          <th class="num">Assigned SP</th>
+          <th class="num">Completed SP</th>
+          <th style="width:140px">Completion</th>
+          <th class="num">Tasks</th>
+          <th class="num">Hours</th>
+          <th class="num">Cycle (d)</th>
+          <th class="num">Commits</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in ctx.members %}
+        <tr>
+          <td><strong>{{ m.name }}</strong></td>
+          <td class="num">{{ m.assigned_sp }}</td>
+          <td class="num">{{ m.completed_sp }}</td>
+          <td>{{ progress(m.completion_rate) }}<span class="muted" style="font-size:11px">{{ m.completion_rate }}%</span></td>
+          <td class="num">{{ m.tasks_done }}/{{ m.tasks_total }}</td>
+          <td class="num">{{ m.hours }}</td>
+          <td class="num">{{ m.cycle_median_days if m.cycle_median_days is not none else '—' }}</td>
+          <td class="num">{{ m.commits }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% for m in ctx.members %}
+    {{ member_card(m) }}
+  {% endfor %}
+  {% else %}
+  <p class="muted">No member activity in this scope.</p>
+  {% endif %}
+</section>

@@ -1,0 +1,16 @@
+{# KPI / stat tile. Reusable across reports and UI. #}
+{% macro kpi(value, label, sub=None) %}
+<div class="kpi">
+  <div class="val">{{ value }}</div>
+  <div class="lbl">{{ label }}</div>
+  {% if sub %}<div class="sub muted">{{ sub }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro kpi_row(items) %}
+<div class="kpis">
+  {% for it in items %}
+    {{ kpi(it.value, it.label, it.get('sub')) }}
+  {% endfor %}
+</div>
+{% endmacro %}

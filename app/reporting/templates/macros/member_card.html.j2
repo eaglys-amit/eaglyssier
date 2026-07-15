@@ -1,0 +1,44 @@
+{# Per-member summary block: SP completion + git contribution + task list. #}
+{% from "macros/table.html.j2" import progress %}
+{% macro member_card(m) %}
+<div class="card">
+  <div class="page-head">
+    <div>
+      <h3 style="margin:0">{{ m.name }}</h3>
+      {% if m.email %}<div class="muted" style="font-size:12px">{{ m.email }}</div>{% endif %}
+    </div>
+    <div style="min-width:180px">
+      <div class="sub">Story points: <strong>{{ m.completed_sp }}</strong> / {{ m.assigned_sp }}
+        ({{ m.completion_rate }}%)</div>
+      {{ progress(m.completion_rate) }}
+    </div>
+  </div>
+
+  <div class="kpis" style="margin-bottom:12px">
+    <div class="kpi"><div class="val">{{ m.completion_rate }}%</div><div class="lbl">SP completion</div><div class="sub muted">{{ m.completed_sp }}/{{ m.assigned_sp }} SP</div></div>
+    <div class="kpi"><div class="val">{{ m.tasks_done }}/{{ m.tasks_total }}</div><div class="lbl">Tasks done</div><div class="sub muted">avg {{ m.avg_sp_per_task }} SP/task</div></div>
+    <div class="kpi"><div class="val">{{ m.hours }}</div><div class="lbl">Hours logged</div></div>
+    <div class="kpi"><div class="val">{{ m.cycle_median_days if m.cycle_median_days is not none else '—' }}</div><div class="lbl">Median cycle (days)</div><div class="sub muted">in progress → done</div></div>
+    <div class="kpi"><div class="val">{{ m.lead_median_days if m.lead_median_days is not none else '—' }}</div><div class="lbl">Median lead (days)</div><div class="sub muted">created → resolved</div></div>
+    <div class="kpi"><div class="val">{{ m.commits }}</div><div class="lbl">Commits</div><div class="sub muted">+{{ m.additions }} / -{{ m.deletions }}</div></div>
+    <div class="kpi"><div class="val">{{ m.prs_merged }}/{{ m.prs_opened }}</div><div class="lbl">PRs merged</div><div class="sub muted">{{ m.reviews_given }} reviews</div></div>
+  </div>
+
+  {% if m.tasks %}
+  <table>
+    <thead><tr><th>Task</th><th>Type</th><th>Status</th><th class="num">SP</th><th class="num">Hrs</th></tr></thead>
+    <tbody>
+    {% for t in m.tasks %}
+      <tr>
+        <td><strong>{{ t.key }}</strong> — {{ t.title }}</td>
+        <td>{{ t.issue_type or '—' }}</td>
+        <td><span class="pill {{ t.status_category }}">{{ t.status or t.status_category|replace('_',' ') }}</span></td>
+        <td class="num">{{ t.story_points if t.story_points is not none else '—' }}</td>
+        <td class="num">{{ t.hours }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endmacro %}

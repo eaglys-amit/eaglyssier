@@ -1,0 +1,140 @@
+{# Dedicated configuration card for one integration platform.
+   Two states:
+     * connected  -> read-only metadata + Test connection + Disconnect
+     * unconnected -> the connect form
+   Disconnect deletes the integration, so the form reappears.
+   `meta` = {label,url_hint,url_ph,supported}; `integ` = Integration row or None. #}
+{% from "macros/icons.html.j2" import icon %}
+{% macro platform_card(project_id, key, meta, integ) %}
+{% set cfg = (integ.config if integ else {}) or {} %}
+<div class="card {{ 'soon' if not meta.supported }}">
+  <div class="platform-head">
+    <span class="ico">{{ icon(key, 22) }}</span>
+    <h3 style="margin:0">{{ meta.label }}</h3>
+    {% if integ %}
+      <span class="badge {{ 'on' if integ.enabled }}">{{ 'connected' if integ.enabled else 'disabled' }}</span>
+    {% elif meta.supported %}
+      <span class="badge">not connected</span>
+    {% else %}
+      <span class="badge">coming soon</span>
+    {% endif %}
+  </div>
+
+  {% if not meta.supported %}
+    <p class="muted" style="font-size:13px">Planned for a later iteration.</p>
+
+  {% elif integ %}
+    {# ---------------------- CONNECTED: metadata view ---------------------- #}
+    <dl class="meta-list">
+      {% if integ.base_url %}<div><dt>Base URL</dt><dd>{{ integ.base_url }}</dd></div>{% endif %}
+      {% if key == 'jira' %}
+        <div><dt>Account email</dt><dd>{{ cfg.get('email') or '—' }}</dd></div>
+        <div><dt>Board ID</dt><dd>{{ cfg.get('board_id') if cfg.get('board_id') is not none else '—' }}</dd></div>
+        <div><dt>Project key</dt><dd>{{ cfg.get('project_key') or '—' }}</dd></div>
+        {% if cfg.get('story_points_field') %}
+        <div><dt>Story-points field</dt><dd>{{ cfg.get('story_points_field') }}</dd></div>
+        {% endif %}
+      {% elif key == 'github' %}
+        <div><dt>Repositories</dt><dd>{{ cfg.get('repos', [])|join(', ') or '—' }}</dd></div>
+        {% if cfg.get('max_commits') %}<div><dt>Max commits / repo</dt><dd>{{ cfg.get('max_commits') }}</dd></div>{% endif %}
+      {% elif key == 'gitlab' %}
+        <div><dt>Projects</dt><dd>{{ cfg.get('projects', [])|join(', ') or '—' }}</dd></div>
+        {% if cfg.get('max_commits') %}<div><dt>Max commits / repo</dt><dd>{{ cfg.get('max_commits') }}</dd></div>{% endif %}
+      {% endif %}
+      <div><dt>API token</dt><dd>{{ '•••••• saved' if integ.credentials_enc else 'none' }}</dd></div>
+    </dl>
+
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+      <button class="btn secondary" type="button"
+              hx-post="/integrations/{{ integ.id }}/test"
+              hx-target="#test-out-{{ integ.id }}"
+              hx-disabled-elt="this"
+              hx-indicator="#test-ind-{{ integ.id }}">Test connection</button>
+      <span id="test-ind-{{ integ.id }}" class="htmx-indicator muted" style="font-size:12px">Testing…</span>
+      <span id="test-out-{{ integ.id }}" class="test-result muted" style="font-size:12px"></span>
+      <form class="inline" method="post" action="/integrations/{{ integ.id }}/delete"
+            onsubmit="return confirm('Disconnect {{ meta.label }}? You will need to re-enter the configuration to reconnect.')">
+        <button class="btn secondary" type="submit">Disconnect</button>
+      </form>
+    </div>
+
+  {% else %}
+    {# --------------------- NOT CONNECTED: connect form -------------------- #}
+    <form method="post" action="/projects/{{ project_id }}/integrations/{{ key }}">
+      <input type="hidden" name="enabled" value="on">
+      <div class="field-grid">
+        <div class="full">
+          <label>Base URL {% if meta.url_hint %}<span class="muted">— {{ meta.url_hint }}</span>{% endif %}</label>
+          <input name="base_url" placeholder="{{ meta.url_ph }}">
+        </div>
+
+        {% if key == 'jira' %}
+        <div>
+          <label>Account email</label>
+          <input name="email" placeholder="you@org.com">
+        </div>
+        <div>
+          <label>Board ID</label>
+          <input name="board_id" placeholder="123">
+        </div>
+        <div>
+          <label>Project key</label>
+          <input name="project_key" placeholder="ABC">
+        </div>
+        <div>
+          <label>Story-points field <span class="muted">(optional)</span></label>
+          <input name="story_points_field" placeholder="customfield_10016">
+        </div>
+
+        {% elif key == 'github' %}
+        <div class="full" x-data="repoList()">
+          <label>Repositories <span class="muted">— one "owner/name" each</span></label>
+          <div class="repo-list">
+            <template x-for="(r, i) in items" :key="i">
+              <div class="repo-row">
+                <input type="text" x-model="items[i]" placeholder="acme/platform">
+                <button class="btn secondary repo-rm" type="button" @click="remove(i)" title="Remove">✕</button>
+              </div>
+            </template>
+          </div>
+          <button class="btn secondary" type="button" @click="add()">+ Add repository</button>
+          <input type="hidden" name="repos" :value="serialized">
+        </div>
+        <div>
+          <label>Max commits / repo <span class="muted">(optional)</span></label>
+          <input name="max_commits" placeholder="300">
+        </div>
+
+        {% elif key == 'gitlab' %}
+        <div class="full" x-data="repoList()">
+          <label>Projects <span class="muted">— one "group/project" or numeric id each</span></label>
+          <div class="repo-list">
+            <template x-for="(r, i) in items" :key="i">
+              <div class="repo-row">
+                <input type="text" x-model="items[i]" placeholder="acme/platform">
+                <button class="btn secondary repo-rm" type="button" @click="remove(i)" title="Remove">✕</button>
+              </div>
+            </template>
+          </div>
+          <button class="btn secondary" type="button" @click="add()">+ Add project</button>
+          <input type="hidden" name="projects" :value="serialized">
+        </div>
+        <div>
+          <label>Max commits / repo <span class="muted">(optional)</span></label>
+          <input name="max_commits" placeholder="500">
+        </div>
+        {% endif %}
+
+        <div class="full">
+          <label>API token</label>
+          <input name="token" type="password" placeholder="paste token">
+        </div>
+      </div>
+
+      <div style="margin-top:14px">
+        <button class="btn" type="submit">Connect</button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endmacro %}

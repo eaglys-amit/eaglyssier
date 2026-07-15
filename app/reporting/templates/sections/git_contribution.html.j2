@@ -1,0 +1,44 @@
+{# Git contribution analysis per member. Consumes ctx.members / ctx.charts. #}
+{% from "macros/chart.html.j2" import chart %}
+<section>
+  <h2>Git contribution</h2>
+  {% if ctx.charts.get('contribution') %}
+  <div class="card">
+    {{ chart(ctx.charts['contribution'], caption="Commits per member within the report window") }}
+  </div>
+  {% endif %}
+
+  {% set git_members = ctx.members|selectattr('commits', 'gt', 0)|list %}
+  {% if git_members %}
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Member</th>
+          <th class="num">Commits</th>
+          <th class="num">Lines +</th>
+          <th class="num">Lines −</th>
+          <th class="num">PRs opened</th>
+          <th class="num">PRs merged</th>
+          <th class="num">Reviews</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in git_members %}
+        <tr>
+          <td><strong>{{ m.name }}</strong></td>
+          <td class="num">{{ m.commits }}</td>
+          <td class="num">+{{ m.additions }}</td>
+          <td class="num">−{{ m.deletions }}</td>
+          <td class="num">{{ m.prs_opened }}</td>
+          <td class="num">{{ m.prs_merged }}</td>
+          <td class="num">{{ m.reviews_given }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No git activity in this scope.</p>
+  {% endif %}
+</section>
