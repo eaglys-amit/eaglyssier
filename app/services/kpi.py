@@ -15,13 +15,21 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import (
     Commit,
-    GitRepo,
     MemberIdentity,
     ProjectMember,
     StatusCategory,
     Task,
 )
 from app.services import analyzers
+from app.services.capacity import allocated_points_for_scope
+from app.services.scope import (
+    EMPTY_SCOPE,
+    AnalysisScope,
+    commit_conditions,
+    load_scope,
+    scoped_repo_ids,
+    task_conditions,
+)
 
 _PROMPT = """\
 You are assessing one team member's contribution to a software project for a \
@@ -62,12 +70,24 @@ def _identity_ids(db: Session, project_id: int, member_id: int) -> list[int]:
     )
 
 
-def _compute_metrics(db: Session, project_id: int, identity_ids: list[int]) -> tuple[dict, list, list]:
-    """Return (metrics dict, commit samples, task samples) for a member."""
+def _compute_metrics(
+    db: Session,
+    project_id: int,
+    identity_ids: list[int],
+    scope: AnalysisScope = EMPTY_SCOPE,
+    commit_sample_limit: int | None = 40,
+) -> tuple[dict, list, list]:
+    """Return (metrics dict, commit samples, task samples) for a member.
+
+    Metric counts always cover every in-scope row. commit_sample_limit caps the
+    number of commit *summaries* passed to the LLM (None = all in-scope commits);
+    evaluation result generation uses None so no contribution is under-represented.
+    """
     metrics = {
         "commits": 0, "additions": 0, "deletions": 0,
         "tasks_total": 0, "tasks_done": 0, "tasks_in_progress": 0, "tasks_todo": 0,
         "story_points_total": 0.0, "story_points_completed": 0.0,
+        "story_points_allocated": 0.0,
         "hours_logged": 0.0, "reopened": 0,
     }
     commit_samples: list[str] = []
@@ -75,21 +95,21 @@ def _compute_metrics(db: Session, project_id: int, identity_ids: list[int]) -> t
     if not identity_ids:
         return metrics, commit_samples, task_samples
 
-    repo_ids = list(
-        db.execute(select(GitRepo.id).where(GitRepo.project_id == project_id)).scalars().all()
-    )
+    repo_ids = scoped_repo_ids(db, project_id, scope)
     if repo_ids:
         commits = db.execute(
             select(Commit)
             .where(Commit.repo_id.in_(repo_ids))
             .where(Commit.author_identity_id.in_(identity_ids))
+            .where(Commit.is_merge.is_(False))  # PR merges/branch updates aren't authored work
+            .where(*commit_conditions(scope))
             .order_by(Commit.authored_at.desc())
         ).scalars().all()
         for c in commits:
             metrics["commits"] += 1
             metrics["additions"] += c.additions or 0
             metrics["deletions"] += c.deletions or 0
-            if len(commit_samples) < 40:
+            if commit_sample_limit is None or len(commit_samples) < commit_sample_limit:
                 if c.analysis_status == "ready" and isinstance(c.analysis, dict) and c.analysis.get("summary"):
                     commit_samples.append(f"- {c.analysis['summary'][:160]}")
                 elif c.message:
@@ -99,6 +119,7 @@ def _compute_metrics(db: Session, project_id: int, identity_ids: list[int]) -> t
         select(Task)
         .where(Task.project_id == project_id)
         .where(Task.assignee_identity_id.in_(identity_ids))
+        .where(*task_conditions(scope))
     ).scalars().all()
     for t in tasks:
         metrics["tasks_total"] += 1
@@ -130,7 +151,8 @@ def _metrics_lines(m: dict) -> str:
         f"- Tasks: {m['tasks_total']} total — {m['tasks_done']} done, "
         f"{m['tasks_in_progress']} in progress, {m['tasks_todo']} to do\n"
         f"- Story points: {m['story_points_completed']:g} completed of "
-        f"{m['story_points_total']:g} assigned\n"
+        f"{m['story_points_total']:g} assigned · "
+        f"{m.get('story_points_allocated', 0):g} allocated (capacity)\n"
         f"- Hours logged: {m['hours_logged']:g}\n"
         f"- Tasks reopened: {m['reopened']}"
     )
@@ -156,7 +178,13 @@ def generate_member_kpi(db: Session, project_id: int, member_id: int) -> None:
         analyzer = analyzers.get_analyzer(provider, config={"model": pm.project.analysis_model})
 
         identity_ids = _identity_ids(db, project_id, member_id)
-        metrics, commit_samples, task_samples = _compute_metrics(db, project_id, identity_ids)
+        scope = load_scope(db, project_id, member_id)
+        metrics, commit_samples, task_samples = _compute_metrics(
+            db, project_id, identity_ids, scope
+        )
+        metrics["story_points_allocated"] = allocated_points_for_scope(
+            db, project_id, member_id, scope.sprint_ids
+        )
 
         prompt = _PROMPT.format(
             name=member.display_name,

@@ -53,7 +53,8 @@ _TABLE_NOTES = {
     "pr_reviews": "PR review records",
     "deliverables": "deliverables with linked_task_keys and source (ai/manual)",
     "reports": "generated report artifacts (html_key/pdf_key point into object storage)",
-    "story_point_scale": "org-wide points -> time-band + risk reference",
+    "story_point_scale": "per-project points -> time-band + risk reference",
+    "sprint_member_capacity": "per-member focus factor (0.1-1.0) per sprint; allocated points = focus_factor * sprint working days",
     "sync_runs": "per-sync audit rows (status, stats JSON, error)",
 }
 

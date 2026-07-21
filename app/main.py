@@ -15,7 +15,7 @@ from app import scheduler
 from app.api import api_router
 from app.config import settings
 from app.db import SessionLocal
-from app.models import SyncRun, SyncStatus
+from app.models import EvaluationSheet, SyncRun, SyncStatus
 from app.storage import rustfs
 from app.web.routes import provider_ws, report_artifacts, terminal
 
@@ -50,6 +50,24 @@ def _reconcile_orphaned_syncs() -> None:
     finally:
         db.close()
 
+    # Separate transaction so a failure here can't roll back the sync cleanup.
+    db = SessionLocal()
+    try:
+        orphaned_sheets = db.execute(
+            update(EvaluationSheet)
+            .where(EvaluationSheet.job_status == "running")
+            .values(job_status="failed", job_error="Interrupted by server restart.")
+        )
+        db.commit()
+        if orphaned_sheets.rowcount:
+            logging.getLogger("startup").info(
+                "Marked %d orphaned evaluation job(s) as failed.", orphaned_sheets.rowcount
+            )
+    except Exception:  # noqa: BLE001
+        logging.getLogger("startup").warning("Could not reconcile orphaned evaluation jobs.")
+    finally:
+        db.close()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -64,7 +82,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
-app = FastAPI(title="Dossier", lifespan=lifespan)
+app = FastAPI(title="Eaglyssier", lifespan=lifespan)
 
 app.include_router(api_router)
 app.include_router(report_artifacts.router)

@@ -101,6 +101,7 @@ def summarize_repo(db: Session, repo_id: int) -> None:
         commits = db.execute(
             select(Commit)
             .where(Commit.repo_id == repo_id)
+            .where(Commit.is_merge.is_(False))
             .order_by(desc(Commit.authored_at))
             .options(selectinload(Commit.author))
         ).scalars().all()

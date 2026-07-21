@@ -19,12 +19,13 @@ import { Spinner } from "@/components/shared/Spinner";
 import { jobBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -37,6 +38,7 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDateTime, shortSha } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type {
+  AnalysisScope,
   Commit,
   CommitAnalysis,
   PullRequest,
@@ -46,6 +48,17 @@ import type {
 } from "@/types/api";
 
 const isRunning = (s: string | undefined | null) => s === "running";
+
+type RepoView = "summary" | "pulls" | "commits";
+
+/** No active member = no filter; otherwise only rows authored by that member. */
+function byMember<T extends { author_member_id: number | null }>(
+  rows: T[],
+  memberId: number | null,
+): T[] {
+  if (memberId == null) return rows;
+  return rows.filter((r) => r.author_member_id === memberId);
+}
 
 function Diff({ additions, deletions }: { additions: number; deletions: number }) {
   return (
@@ -236,10 +249,11 @@ function CommitAnalysisPanel({ commit, repoId }: { commit: Commit; repoId: numbe
   );
 }
 
-function CommitList({ repoId }: { repoId: number }) {
+function CommitList({ repoId, memberId }: { repoId: number; memberId: number | null }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [showMerges, setShowMerges] = useState(false);
   const qc = useQueryClient();
-  const { data: commits, isPending } = useQuery({
+  const { data: allCommits, isPending } = useQuery({
     queryKey: qk.commits(repoId),
     queryFn: () => api.get<Commit[]>(`/repos/${repoId}/commits`),
     refetchInterval: (q) =>
@@ -262,24 +276,55 @@ function CommitList({ repoId }: { repoId: number }) {
       </div>
     );
   }
-  if (!commits?.length) {
+  if (!allCommits?.length) {
     return <p className="p-4 text-sm text-muted-foreground">No commits synced.</p>;
   }
+  const forMember = byMember(allCommits, memberId);
+  if (!forMember.length) {
+    return (
+      <p className="p-4 text-sm text-muted-foreground">
+        No commits by the selected member.
+      </p>
+    );
+  }
+  const mergeCount = forMember.filter((c) => c.is_merge).length;
+  const commits = showMerges ? forMember : forMember.filter((c) => !c.is_merge);
   const anyRunning = commits.some((c) => isRunning(c.analysis_status));
 
   return (
     <div>
-      <div className="flex items-center justify-between px-4 pt-3">
-        <span className="text-xs text-muted-foreground">{commits.length} commits</span>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={anyRunning || analyzeAll.isPending}
-          onClick={() => analyzeAll.mutate()}
-        >
-          <Sparkles className="size-4" /> Analyze all
-        </Button>
+      <div className="flex items-center justify-between gap-3 px-4 pt-3">
+        <span className="text-xs text-muted-foreground">
+          {memberId != null
+            ? `${commits.length} of ${allCommits.length} commits (member filter)`
+            : `${commits.length} commits`}
+          {!showMerges && mergeCount ? ` · ${mergeCount} merges hidden` : ""}
+        </span>
+        <div className="flex items-center gap-3">
+          {mergeCount ? (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Checkbox
+                checked={showMerges}
+                onCheckedChange={(v) => setShowMerges(v === true)}
+              />
+              Show merges ({mergeCount})
+            </label>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={anyRunning || analyzeAll.isPending}
+            onClick={() => analyzeAll.mutate()}
+          >
+            <Sparkles className="size-4" /> Analyze all
+          </Button>
+        </div>
       </div>
+      {!commits.length ? (
+        <p className="p-4 text-sm text-muted-foreground">
+          Only merge commits here — enable “Show merges” to see them.
+        </p>
+      ) : null}
       <Table>
         <TableHeader>
           <TableRow>
@@ -308,8 +353,15 @@ function CommitList({ repoId }: { repoId: number }) {
                 }
               >
                 <TableCell className="font-mono text-xs">{shortSha(c.sha)}</TableCell>
-                <TableCell className="max-w-md truncate">
-                  {c.message?.split("\n")[0] || "—"}
+                <TableCell className="max-w-md">
+                  <span className="flex items-center gap-1.5">
+                    {c.is_merge ? (
+                      <Badge variant="secondary" className="shrink-0 text-[10px]">
+                        merge
+                      </Badge>
+                    ) : null}
+                    <span className="truncate">{c.message?.split("\n")[0] || "—"}</span>
+                  </span>
                 </TableCell>
                 <TableCell className="truncate text-muted-foreground">
                   {c.author_name || "—"}
@@ -339,8 +391,8 @@ function CommitList({ repoId }: { repoId: number }) {
 
 /* ------------------------------------------------------------ pull requests */
 
-function PrTable({ repoId }: { repoId: number }) {
-  const { data: prs, isPending } = useQuery({
+function PrTable({ repoId, memberId }: { repoId: number; memberId: number | null }) {
+  const { data: allPrs, isPending } = useQuery({
     queryKey: qk.pulls(repoId),
     queryFn: () => api.get<PullRequest[]>(`/repos/${repoId}/pulls`),
   });
@@ -352,8 +404,16 @@ function PrTable({ repoId }: { repoId: number }) {
       </div>
     );
   }
-  if (!prs?.length) {
+  if (!allPrs?.length) {
     return <p className="p-4 text-sm text-muted-foreground">No pull requests synced.</p>;
+  }
+  const prs = byMember(allPrs, memberId);
+  if (!prs.length) {
+    return (
+      <p className="p-4 text-sm text-muted-foreground">
+        No pull requests by the selected member.
+      </p>
+    );
   }
   return (
     <Table>
@@ -402,7 +462,21 @@ function PrTable({ repoId }: { repoId: number }) {
 
 /* -------------------------------------------------------------------- repos */
 
-function RepoCard({ projectId, repo }: { projectId: number; repo: Repo }) {
+function RepoCard({
+  projectId,
+  repo,
+  view,
+  activeMemberId,
+  scope,
+  onToggleRepo,
+}: {
+  projectId: number;
+  repo: Repo;
+  view: RepoView;
+  activeMemberId: number | null;
+  scope: AnalysisScope;
+  onToggleRepo: (id: number) => void;
+}) {
   const qc = useQueryClient();
   const { data: sync } = useQuery({
     queryKey: qk.repoSync(repo.id),
@@ -444,6 +518,14 @@ function RepoCard({ projectId, repo }: { projectId: number; repo: Repo }) {
   return (
     <Collapsible className="rounded-lg border bg-card">
       <div className="flex items-center gap-2 px-4 py-2.5">
+        {activeMemberId != null ? (
+          <Checkbox
+            checked={scope.repo_ids.includes(repo.id)}
+            onCheckedChange={() => onToggleRepo(repo.id)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Include repository ${repo.name} in this member's analysis scope`}
+          />
+        ) : null}
         <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 text-left">
           <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
           <PlatformIcon platform={repo.provider} size={14} />
@@ -494,24 +576,12 @@ function RepoCard({ projectId, repo }: { projectId: number; repo: Repo }) {
         </div>
       ) : null}
       <CollapsibleContent>
-        <Tabs defaultValue="summary" className="border-t">
-          <TabsList className="mx-4 mt-3">
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="pulls">
-              <GitPullRequest className="size-3.5" /> Pull requests
-            </TabsTrigger>
-            <TabsTrigger value="commits">Commits</TabsTrigger>
-          </TabsList>
-          <TabsContent value="summary">
-            <RepoSummaryPanel repo={repo} />
-          </TabsContent>
-          <TabsContent value="pulls">
-            <PrTable repoId={repo.id} />
-          </TabsContent>
-          <TabsContent value="commits">
-            <CommitList repoId={repo.id} />
-          </TabsContent>
-        </Tabs>
+        {/* Which panel shows is driven by the section-level toggle (all repos share it). */}
+        <div className="border-t">
+          {view === "summary" ? <RepoSummaryPanel repo={repo} /> : null}
+          {view === "pulls" ? <PrTable repoId={repo.id} memberId={activeMemberId} /> : null}
+          {view === "commits" ? <CommitList repoId={repo.id} memberId={activeMemberId} /> : null}
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -520,10 +590,18 @@ function RepoCard({ projectId, repo }: { projectId: number; repo: Repo }) {
 export function ReposSection({
   projectId,
   provider,
+  activeMemberId,
+  scope,
+  onToggleRepo,
 }: {
   projectId: number;
   provider?: string;
+  activeMemberId: number | null;
+  scope: AnalysisScope;
+  onToggleRepo: (id: number) => void;
 }) {
+  // One view toggle shared by every repo card in this section.
+  const [view, setView] = useState<RepoView>("summary");
   const { data } = useQuery({
     queryKey: qk.repos(projectId),
     queryFn: () => api.get<Repo[]>(`/projects/${projectId}/repos`),
@@ -533,9 +611,22 @@ export function ReposSection({
 
   return (
     <section>
-      <h2 className="mb-3 text-sm font-semibold tracking-tight">
-        {label ? `${label} repositories` : "Repositories"}
-      </h2>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold tracking-tight">
+          {label ? `${label} repositories` : "Repositories"}
+        </h2>
+        {repos?.length ? (
+          <Tabs value={view} onValueChange={(v) => setView(v as RepoView)}>
+            <TabsList>
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+              <TabsTrigger value="pulls">
+                <GitPullRequest className="size-3.5" /> Pull requests
+              </TabsTrigger>
+              <TabsTrigger value="commits">Commits</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : null}
+      </div>
       {!repos?.length ? (
         <EmptyState
           icon={FolderGit2}
@@ -549,7 +640,15 @@ export function ReposSection({
       ) : (
         <div className="space-y-2">
           {repos.map((r) => (
-            <RepoCard key={r.id} projectId={projectId} repo={r} />
+            <RepoCard
+              key={r.id}
+              projectId={projectId}
+              repo={r}
+              view={view}
+              activeMemberId={activeMemberId}
+              scope={scope}
+              onToggleRepo={onToggleRepo}
+            />
           ))}
         </div>
       )}

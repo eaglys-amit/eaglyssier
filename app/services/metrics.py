@@ -251,7 +251,11 @@ def _aggregate_git(db, project_id, window, members, names, summary: ReportSummar
         return
     start, end = window
 
-    commit_stmt = select(Commit).where(Commit.repo_id.in_(repo_ids))
+    commit_stmt = (
+        select(Commit)
+        .where(Commit.repo_id.in_(repo_ids))
+        .where(Commit.is_merge.is_(False))
+    )
     if start:
         commit_stmt = commit_stmt.where(Commit.authored_at >= _as_dt(start))
     if end:

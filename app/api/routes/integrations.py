@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_or_404
 from app.connectors import build_connector
 from app.connectors.base import ConnectorError
 from app.db import get_db
-from app.models import Integration, IntegrationType, Project
+from app.models import Integration, IntegrationType, MemberIdentity, Project
 from app.schemas.integration import (
     IntegrationIn,
     IntegrationOut,
@@ -155,5 +155,13 @@ def test_connection(integration_id: int, db: Session = Depends(get_db)):
 def delete_integration(integration_id: int, db: Session = Depends(get_db)):
     integ = db.get(Integration, integration_id)
     if integ:
+        # Reset this platform's discovered accounts so a reconnect starts with a
+        # fresh member list. Tasks/commits/PRs keep their rows (FKs are SET NULL).
+        db.execute(
+            delete(MemberIdentity).where(
+                MemberIdentity.project_id == integ.project_id,
+                MemberIdentity.system == integ.type,
+            )
+        )
         db.delete(integ)
         db.commit()

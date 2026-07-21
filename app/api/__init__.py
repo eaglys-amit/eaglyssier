@@ -5,8 +5,10 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     analysis,
+    capacity,
     data,
     deliverables,
+    evaluation,
     integrations,
     kpi,
     members,
@@ -14,6 +16,7 @@ from app.api.routes import (
     projects,
     provider,
     reports,
+    scope,
     settings,
     sync,
 )
@@ -26,8 +29,11 @@ for _r in (
     integrations.router,
     sync.router,
     data.router,
+    scope.router,
     analysis.router,
     kpi.router,
+    capacity.router,
+    evaluation.router,
     deliverables.router,
     reports.router,
     provider.router,

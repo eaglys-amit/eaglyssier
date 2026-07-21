@@ -1,6 +1,7 @@
-import { FolderKanban, Ruler, Users } from "lucide-react";
+import { FolderKanban, Users } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
+import dossierMark from "@/assets/eaglyssier-mark.png";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { cn } from "@/lib/utils";
 
@@ -12,21 +13,15 @@ const NAV = [
       { to: "/members", label: "Members", icon: Users },
     ],
   },
-  {
-    heading: "Settings",
-    items: [{ to: "/settings/story-points", label: "Story points", icon: Ruler }],
-  },
 ];
 
 export function AppSidebar() {
   return (
     <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div className="flex items-center gap-2 px-4 py-5">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <FolderKanban className="size-4" />
-        </div>
+        <img src={dossierMark} alt="Eaglyssier" className="size-8 shrink-0" />
         <div className="leading-tight">
-          <div className="text-sm font-semibold tracking-tight">Dossier</div>
+          <div className="text-sm font-semibold tracking-tight">Eaglyssier</div>
           <div className="text-xs text-muted-foreground">Project reports & analytics</div>
         </div>
       </div>

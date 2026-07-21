@@ -28,6 +28,7 @@ class TaskOut(ApiModel):
     story_points: float | None
     sprint_id: int | None
     assignee_name: str | None = None
+    assignee_member_id: int | None = None
 
 
 class TaskDetail(BaseModel):
@@ -65,7 +66,9 @@ class CommitOut(ApiModel):
     additions: int
     deletions: int
     files_changed: int
+    is_merge: bool = False
     author_name: str | None = None
+    author_member_id: int | None = None
     analysis_status: JobStatus
 
 
@@ -86,4 +89,5 @@ class PullRequestOut(ApiModel):
     created_at_src: datetime | None
     merged_at_src: datetime | None
     author_name: str | None = None
+    author_member_id: int | None = None
     reviews: list[PRReviewOut] = []

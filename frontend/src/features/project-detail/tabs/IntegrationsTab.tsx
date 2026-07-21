@@ -219,6 +219,7 @@ function PlatformCard({
     mutationFn: () => api.delete(`/integrations/${integration!.id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.integrations(projectId) });
+      qc.invalidateQueries({ queryKey: qk.projectMembers(projectId) });
       toast.success(`${label} disconnected`);
     },
     onError: (err: ApiError) => toast.error(err.detail || "Could not disconnect"),
@@ -269,7 +270,7 @@ function PlatformCard({
                 </Button>
               }
               title={`Disconnect ${label}?`}
-              description="Removes the stored credentials and configuration. Synced data stays."
+              description="Removes the stored credentials, configuration, and this platform's discovered accounts from the member list. Synced data stays."
               confirmLabel="Disconnect"
               onConfirm={() => disconnect.mutate()}
             />

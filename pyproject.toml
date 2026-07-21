@@ -1,7 +1,7 @@
 [project]
-name = "dossier"
+name = "eaglyssier"
 version = "0.1.0"
-description = "Dossier: software-project reports — sprints, story points, member analytics, git contribution, deliverables."
+description = "Eaglyssier: software-project reports — sprints, story points, member analytics, git contribution, deliverables."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110",

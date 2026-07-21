@@ -70,6 +70,9 @@ class Project(Base, TimestampMixin):
     deliverables_error: Mapped[str | None] = mapped_column(Text)
     deliverables_model: Mapped[str | None] = mapped_column(String(128))
     deliverables_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Persisted analysis scope for KPI/Evaluation generation (see app.services.scope):
+    # {"member_ids": [], "sprint_ids": [], "repo_ids": [], "start_date": null, "end_date": null}
+    analysis_scope: Mapped[dict | None] = mapped_column(JSON)
 
     integrations: Mapped[list["Integration"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
@@ -87,6 +90,9 @@ class Project(Base, TimestampMixin):
         back_populates="project", cascade="all, delete-orphan"
     )
     members: Mapped[list["ProjectMember"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    story_point_scale: Mapped[list["StoryPointScale"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
 
@@ -138,6 +144,11 @@ class ProjectMember(Base, TimestampMixin):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"))
 
+    # Per-member analysis data selection chosen on the Data tab (see
+    # app.services.scope): {"sprint_ids": [], "repo_ids": [], "start_date":
+    # null, "end_date": null}. KPI/Evaluation generation for this member reads it.
+    analysis_scope: Mapped[dict | None] = mapped_column(JSON)
+
     # LLM-generated KPI from this member's commits + Jira tasks (see app.services.kpi).
     kpi_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="none", server_default="none"
@@ -149,6 +160,44 @@ class ProjectMember(Base, TimestampMixin):
 
     project: Mapped["Project"] = relationship(back_populates="members")
     member: Mapped["Member"] = relationship(back_populates="project_links")
+
+
+class EvaluationSheet(Base, TimestampMixin):
+    """Per-project, per-member MBO FORM② evaluation sheet (see app.services.evaluation).
+
+    `axes` maps each of the 6 axis keys (outcomes/value/cost/quality/delivery/
+    ownership) to {planned_goal, key_results, self_eval, tech_lead_eval,
+    final_eval} where grades are "S".."E" or None. `checklist` stores the
+    normalized 16-item PASS/FAIL result of the HR FORM② checker prompt.
+    """
+
+    __tablename__ = "evaluation_sheets"
+    __table_args__ = (
+        UniqueConstraint("project_id", "member_id", name="uq_eval_project_member"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"))
+
+    tech_lead_name: Mapped[str | None] = mapped_column(String(255))
+    axes: Mapped[dict] = mapped_column(JSON, default=dict)
+    evidence: Mapped[str | None] = mapped_column(Text)  # Evidence of Outcomes (URLs/refs)
+
+    # One background LLM job at a time per sheet.
+    job_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    job_kind: Mapped[str | None] = mapped_column(String(16))  # goals | results | checklist
+    job_error: Mapped[str | None] = mapped_column(Text)
+    job_model: Mapped[str | None] = mapped_column(String(128))
+    goals_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    results_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checklist: Mapped[dict | None] = mapped_column(JSON)
+
+    project: Mapped["Project"] = relationship()
+    member: Mapped["Member"] = relationship()
 
 
 class MemberIdentity(Base, TimestampMixin):
@@ -195,9 +244,38 @@ class Sprint(Base, TimestampMixin):
     end_date: Mapped[date | None] = mapped_column(Date)
     complete_date: Mapped[date | None] = mapped_column(Date)
     goal: Mapped[str | None] = mapped_column(Text)
+    # Manual capacity-days override for focus-factor allocation (see
+    # app.services.capacity). NULL = fall back to business days between
+    # start_date/end_date.
+    working_days: Mapped[int | None] = mapped_column(Integer)
 
     project: Mapped["Project"] = relationship(back_populates="sprints")
     tasks: Mapped[list["Task"]] = relationship(back_populates="sprint")
+    member_capacities: Mapped[list["SprintMemberCapacity"]] = relationship(
+        back_populates="sprint", cascade="all, delete-orphan"
+    )
+
+
+class SprintMemberCapacity(Base, TimestampMixin):
+    """A member's focus factor for one sprint (see app.services.capacity).
+
+    Allocated story points = focus_factor * the sprint's working days (1 day =
+    1 point). Keyed on the global Member id, matching how KPI/scope reference
+    members.
+    """
+
+    __tablename__ = "sprint_member_capacity"
+    __table_args__ = (
+        UniqueConstraint("sprint_id", "member_id", name="uq_sprint_member_capacity"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sprint_id: Mapped[int] = mapped_column(ForeignKey("sprints.id", ondelete="CASCADE"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"))
+    focus_factor: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+
+    sprint: Mapped["Sprint"] = relationship(back_populates="member_capacities")
+    member: Mapped["Member"] = relationship()
 
 
 class Task(Base, TimestampMixin):
@@ -286,6 +364,10 @@ class Commit(Base, TimestampMixin):
     deletions: Mapped[int] = mapped_column(Integer, default=0)
     files_changed: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str | None] = mapped_column(Text)
+    # 2+ parents (PR merge / branch update) — excluded from KPI/Evaluation metrics.
+    is_merge: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # LLM code analysis of this commit's diff (see app.services.commit_analysis).
     analysis_status: Mapped[str] = mapped_column(
@@ -383,21 +465,27 @@ class Report(Base, TimestampMixin):
 
 
 class StoryPointScale(Base, TimestampMixin):
-    """Org-wide story-point reference scale (points -> time band + risk).
+    """Per-project story-point reference scale (points -> time band + risk).
 
     Used as estimation guidance and to flag tasks whose logged hours fall
     outside the band for their points.
     """
 
     __tablename__ = "story_point_scale"
+    __table_args__ = (
+        UniqueConstraint("project_id", "points", name="uq_scale_project_points"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    points: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
     min_hours: Mapped[float | None] = mapped_column(Float)
     max_hours: Mapped[float | None] = mapped_column(Float)
     risk: Mapped[str] = mapped_column(String(32), default="None")
     needs_breakdown: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str | None] = mapped_column(String(255))
+
+    project: Mapped["Project"] = relationship(back_populates="story_point_scale")
 
 
 class SyncRun(Base, TimestampMixin):

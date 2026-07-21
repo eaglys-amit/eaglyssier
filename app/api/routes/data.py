@@ -69,6 +69,7 @@ def list_tasks(project_id: int, db: Session = Depends(get_db)):
             update={
                 "status_category": t.status_category.value,
                 "assignee_name": _identity_name(t.assignee),
+                "assignee_member_id": t.assignee.member_id if t.assignee else None,
             }
         )
         for t in tasks
@@ -179,7 +180,12 @@ def list_commits(repo_id: int, db: Session = Depends(get_db)):
         .options(selectinload(Commit.author))
     ).scalars().all()
     return [
-        CommitOut.model_validate(c).model_copy(update={"author_name": _identity_name(c.author)})
+        CommitOut.model_validate(c).model_copy(
+            update={
+                "author_name": _identity_name(c.author),
+                "author_member_id": c.author.member_id if c.author else None,
+            }
+        )
         for c in commits
     ]
 
@@ -200,6 +206,7 @@ def list_pulls(repo_id: int, db: Session = Depends(get_db)):
         PullRequestOut.model_validate(pr).model_copy(
             update={
                 "author_name": _identity_name(pr.author),
+                "author_member_id": pr.author.member_id if pr.author else None,
                 "reviews": [
                     PRReviewOut(
                         state=rv.state,

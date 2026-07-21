@@ -63,6 +63,7 @@ class CommitDTO:
     deletions: int = 0
     files_changed: int = 0
     message: str | None = None
+    is_merge: bool = False  # 2+ parents: PR merges / branch updates, not authored work
 
 
 @dataclass

@@ -14,11 +14,17 @@ export const qk = {
   reports: (id: number) => ["projects", id, "reports"] as const,
   deliverables: (id: number) => ["projects", id, "deliverables"] as const,
   kpi: (id: number) => ["projects", id, "kpi"] as const,
+  evaluation: (id: number) => ["projects", id, "evaluation"] as const,
+  evaluationSheet: (id: number, memberId: number) =>
+    ["projects", id, "evaluation", memberId] as const,
   integrations: (id: number) => ["projects", id, "integrations"] as const,
   syncStatus: (integrationId: number) => ["integrations", integrationId, "sync-status"] as const,
   syncRuns: (id: number) => ["projects", id, "sync-runs"] as const,
   projectMembers: (id: number) => ["projects", id, "members"] as const,
+  memberScope: (id: number, memberId: number) =>
+    ["projects", id, "members", memberId, "scope"] as const,
   members: ["members"] as const,
   claudeStatus: ["provider", "claude", "status"] as const,
-  storyPoints: ["settings", "story-points"] as const,
+  storyPoints: (id: number) => ["projects", id, "story-points"] as const,
+  capacity: (id: number) => ["projects", id, "capacity"] as const,
 };

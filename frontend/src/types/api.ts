@@ -62,6 +62,14 @@ export interface ProjectMembers {
   identities: PlatformIdentities[];
 }
 
+/** Per-member data selection; drives that member's KPI/Evaluation generation. */
+export interface AnalysisScope {
+  sprint_ids: number[];
+  repo_ids: number[];
+  start_date: string | null;
+  end_date: string | null;
+}
+
 export interface IntegrationType {
   key: string;
   label: string;
@@ -115,6 +123,7 @@ export interface Sprint {
   end_date: string | null;
   goal: string | null;
   task_count: number;
+  working_days?: number | null;
 }
 
 export interface Task {
@@ -127,6 +136,7 @@ export interface Task {
   story_points: number | null;
   sprint_id: number | null;
   assignee_name: string | null;
+  assignee_member_id: number | null;
 }
 
 export interface TaskDetail {
@@ -188,7 +198,9 @@ export interface Commit {
   additions: number;
   deletions: number;
   files_changed: number;
+  is_merge: boolean;
   author_name: string | null;
+  author_member_id: number | null;
   analysis_status: JobStatus;
 }
 
@@ -225,6 +237,7 @@ export interface PullRequest {
   created_at_src: string | null;
   merged_at_src: string | null;
   author_name: string | null;
+  author_member_id: number | null;
   reviews: PRReview[];
 }
 
@@ -265,6 +278,7 @@ export interface KpiMetrics {
   tasks_total?: number;
   story_points_completed?: number;
   story_points_total?: number;
+  story_points_allocated?: number;
   additions?: number;
   deletions?: number;
   hours_logged?: number;
@@ -288,6 +302,59 @@ export interface Kpi {
   error: string | null;
   model: string | null;
   generated_at: string | null;
+}
+
+export type Grade = "S" | "A" | "B" | "C" | "D" | "E";
+
+export interface AxisCells {
+  planned_goal: string;
+  key_results: string;
+  self_eval: Grade | null;
+  tech_lead_eval: Grade | null;
+  final_eval: Grade | null;
+}
+
+export interface ChecklistItem {
+  id: string;
+  status: "PASS" | "FAIL";
+  reason: string | null;
+  suggestion: string | null;
+}
+
+export interface Checklist {
+  verdict: "pass" | "fail";
+  items: ChecklistItem[];
+  /** True when the sheet's goals/results changed after this check ran. */
+  stale?: boolean;
+}
+
+export interface EvaluationSummary {
+  member_id: number;
+  display_name: string;
+  job_status: JobStatus;
+  job_kind: string | null;
+  has_sheet: boolean;
+  checklist_verdict: "pass" | "fail" | null;
+  checklist_stale: boolean;
+}
+
+export interface EvaluationSheet {
+  member_id: number;
+  display_name: string;
+  project_key: string | null;
+  project_name: string;
+  tech_lead_name: string | null;
+  axes: Record<string, AxisCells>;
+  evidence: string | null;
+  job_status: JobStatus;
+  job_kind: string | null;
+  job_error: string | null;
+  job_model: string | null;
+  goals_generated_at: string | null;
+  results_generated_at: string | null;
+  checked_at: string | null;
+  checklist: Checklist | null;
+  updated_at: string | null;
 }
 
 export interface AnalyzeAll {
@@ -320,4 +387,33 @@ export interface StoryPointRow {
   risk: string;
   needs_breakdown: boolean;
   note: string | null;
+}
+
+export interface SprintCapacityMember {
+  member_id: number;
+  display_name: string;
+  focus_factor: number;
+  allocated_points: number;
+  completed_points: number;
+  delta: number;
+  over_capacity: boolean;
+}
+
+export interface SprintCapacity {
+  sprint_id: number;
+  name: string;
+  state: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  working_days: number;
+  working_days_override: number | null;
+  team_capacity: number;
+  team_completed: number;
+  members: SprintCapacityMember[];
+}
+
+/** PUT body for a sprint's capacity. */
+export interface SprintCapacityIn {
+  working_days: number | null;
+  members: { member_id: number; focus_factor: number }[];
 }

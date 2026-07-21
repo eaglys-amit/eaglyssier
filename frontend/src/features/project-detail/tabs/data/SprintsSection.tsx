@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge, taskCategoryBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -24,7 +25,13 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type { Sprint, Task } from "@/types/api";
+import type { AnalysisScope, Sprint, Task } from "@/types/api";
+
+/** No active member = no filter; otherwise only tasks assigned to that member. */
+function byMember(tasks: Task[], memberId: number | null): Task[] {
+  if (memberId == null) return tasks;
+  return tasks.filter((t) => t.assignee_member_id === memberId);
+}
 
 function TaskTable({ tasks }: { tasks: Task[] }) {
   const [params, setParams] = useSearchParams();
@@ -68,7 +75,17 @@ function TaskTable({ tasks }: { tasks: Task[] }) {
   );
 }
 
-export function SprintsSection({ projectId }: { projectId: number }) {
+export function SprintsSection({
+  projectId,
+  activeMemberId,
+  scope,
+  onToggleSprint,
+}: {
+  projectId: number;
+  activeMemberId: number | null;
+  scope: AnalysisScope;
+  onToggleSprint: (id: number) => void;
+}) {
   const qc = useQueryClient();
   const { data: sprints } = useQuery({
     queryKey: qk.sprints(projectId),
@@ -109,12 +126,13 @@ export function SprintsSection({ projectId }: { projectId: number }) {
   });
 
   const bySprint = new Map<number | null, Task[]>();
-  for (const t of tasks ?? []) {
+  for (const t of byMember(tasks ?? [], activeMemberId)) {
     const list = bySprint.get(t.sprint_id) ?? [];
     list.push(t);
     bySprint.set(t.sprint_id, list);
   }
   const backlog = bySprint.get(null) ?? [];
+  const memberActive = activeMemberId != null;
 
   return (
     <section>
@@ -147,6 +165,14 @@ export function SprintsSection({ projectId }: { projectId: number }) {
             return (
               <Collapsible key={s.id} className="rounded-lg border bg-card">
                 <div className="flex items-center gap-2 px-4 py-2.5">
+                  {memberActive ? (
+                    <Checkbox
+                      checked={scope.sprint_ids.includes(s.id)}
+                      onCheckedChange={() => onToggleSprint(s.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Include sprint ${s.name} in this member's analysis scope`}
+                    />
+                  ) : null}
                   <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 text-left">
                     <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
                     <span className="truncate text-sm font-medium">{s.name}</span>
@@ -160,7 +186,7 @@ export function SprintsSection({ projectId }: { projectId: number }) {
                       {formatDate(s.start_date)} → {formatDate(s.end_date)}
                     </span>
                     <Badge variant="secondary" className="ml-auto font-mono tabular-nums">
-                      {sprintTasks.length}
+                      {memberActive ? `${sprintTasks.length}/${s.task_count}` : sprintTasks.length}
                     </Badge>
                   </CollapsibleTrigger>
                   <ConfirmDialog
@@ -197,7 +223,11 @@ export function SprintsSection({ projectId }: { projectId: number }) {
                 <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 text-left">
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
                   <span className="text-sm font-medium">Backlog</span>
-                  <span className="text-xs text-muted-foreground">tasks without a sprint</span>
+                  <span className="text-xs text-muted-foreground">
+                    {memberActive && scope.sprint_ids.length
+                      ? "tasks without a sprint — excluded from analysis while sprints are selected"
+                      : "tasks without a sprint"}
+                  </span>
                   <Badge variant="secondary" className="ml-auto font-mono tabular-nums">
                     {backlog.length}
                   </Badge>

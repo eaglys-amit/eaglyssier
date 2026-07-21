@@ -124,6 +124,7 @@ class GitHubConnector(GitConnector):
                         deletions=stats.get("deletions", 0),
                         files_changed=len(files),
                         message=commit_meta.get("message"),
+                        is_merge=len(item.get("parents") or []) > 1,
                     )
                 )
                 if len(out) >= max_commits:

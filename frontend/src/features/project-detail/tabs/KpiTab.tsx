@@ -86,6 +86,14 @@ function KpiDetailCard({ kpi }: { kpi: Kpi }) {
                 : (metrics.story_points_completed ?? "—")
             }
           />
+          <KpiStat
+            label="Completed / allocated"
+            value={
+              metrics.story_points_allocated
+                ? `${metrics.story_points_completed ?? 0}/${metrics.story_points_allocated}`
+                : (metrics.story_points_completed ?? "—")
+            }
+          />
           <KpiStat label="Hours logged" value={metrics.hours_logged ?? "—"} />
           <KpiStat
             label="Lines changed"
@@ -222,6 +230,9 @@ export function KpiTab({ projectId }: { projectId: number }) {
               <Sparkles className="size-4" />
               Generate {selected.size ? `(${selected.size})` : ""}
             </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Each member's saved data scope (sprints/repos/dates) from the Data tab is applied.
+            </p>
           </div>
         </CardContent>
       </Card>

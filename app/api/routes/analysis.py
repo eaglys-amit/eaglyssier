@@ -63,6 +63,7 @@ def analyze_all(repo_id: int, background: BackgroundTasks, db: Session = Depends
         select(Commit)
         .where(Commit.repo_id == repo_id)
         .where(Commit.analysis_status != "ready")
+        .where(Commit.is_merge.is_(False))  # merge commits carry no authored diff worth analyzing
         .order_by(Commit.authored_at.desc())
     ).scalars().all()
     ids = [c.id for c in eligible]

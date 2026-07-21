@@ -5,7 +5,6 @@ import { MembersPage } from "@/features/members/MembersPage";
 import { NotFoundPage } from "@/features/NotFoundPage";
 import { ProjectDetailLayout } from "@/features/project-detail/ProjectDetailLayout";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
-import { StoryPointsPage } from "@/features/settings/StoryPointsPage";
 
 export const router = createBrowserRouter([
   {
@@ -16,7 +15,6 @@ export const router = createBrowserRouter([
       { path: "/projects/:projectId", element: <ProjectDetailLayout /> },
       { path: "/projects/:projectId/:tab", element: <ProjectDetailLayout /> },
       { path: "/members", element: <MembersPage /> },
-      { path: "/settings/story-points", element: <StoryPointsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

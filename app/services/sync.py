@@ -346,6 +346,7 @@ def _upsert_commit(db: Session, integration: Integration, repo: GitRepo, dto: Co
     commit.deletions = dto.deletions
     commit.files_changed = dto.files_changed
     commit.message = dto.message
+    commit.is_merge = dto.is_merge
     db.flush()
     return commit
 

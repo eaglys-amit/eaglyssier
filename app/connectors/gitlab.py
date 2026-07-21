@@ -132,6 +132,7 @@ class GitLabConnector(GitConnector):
                         deletions=stats.get("deletions", 0),
                         files_changed=0,  # GitLab commit stats expose line totals, not file count
                         message=item.get("message"),
+                        is_merge=len(item.get("parent_ids") or []) > 1,
                     )
                 )
                 if len(out) >= max_commits:

@@ -57,6 +57,15 @@ function SyncCard({
   const syncing = status?.syncing || trigger.isPending;
   const run = status?.run ?? null;
   const label = SOURCE_LABELS[integration.type] ?? integration.type;
+  const info = run?.error
+    ? run.error
+    : run?.stats && Object.keys(run.stats).length
+      ? Object.entries(run.stats)
+          .map(([k, v]) => `${v} ${k}`)
+          .join(" · ")
+      : run?.finished_at
+        ? `Last run ${formatDateTime(run.finished_at)}`
+        : "Never synced";
 
   return (
     <Card
@@ -71,50 +80,33 @@ function SyncCard({
         }
       }}
       className={cn(
-        "cursor-pointer transition-colors",
-        selected
-          ? "border-primary ring-1 ring-primary"
-          : "hover:border-muted-foreground/40",
+        "cursor-pointer py-0 transition-colors",
+        selected ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/40",
       )}
     >
-      <CardContent className="flex items-center justify-between gap-3 p-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <PlatformIcon platform={integration.type} />
-            <span className={cn("text-sm font-medium", selected && "text-primary")}>{label}</span>
-            {syncing ? (
-              syncRunBadge("running")
-            ) : run ? (
-              syncRunBadge(run.status)
-            ) : (
-              <span className="text-xs text-muted-foreground">Never synced</span>
-            )}
-          </div>
-          <div className="mt-1 truncate text-xs text-muted-foreground">
-            {run?.error
-              ? run.error
-              : run?.stats && Object.keys(run.stats).length
-                ? Object.entries(run.stats)
-                    .map(([k, v]) => `${v} ${k}`)
-                    .join(" · ")
-                : run?.finished_at
-                  ? `Last run ${formatDateTime(run.finished_at)}`
-                  : integration.type === "jira"
-                    ? "Sprints, tasks, story points, worklogs."
-                    : "Repos, commits, and pull requests."}
-          </div>
-        </div>
+      <CardContent className="flex items-center gap-2 px-3 py-2">
+        <PlatformIcon platform={integration.type} size={16} />
+        <span className={cn("text-sm font-medium", selected && "text-primary")}>{label}</span>
+        {syncing ? syncRunBadge("running") : run ? syncRunBadge(run.status) : null}
+        <span
+          className="ml-1 max-w-56 truncate text-xs text-muted-foreground"
+          title={info}
+        >
+          {info}
+        </span>
         <Button
-          size="sm"
-          variant="outline"
+          size="icon"
+          variant="ghost"
+          className="ml-1 size-7"
           disabled={syncing || !integration.enabled}
+          title={syncing ? "Syncing…" : "Sync"}
           onClick={(e) => {
             e.stopPropagation();
             trigger.mutate();
           }}
         >
-          <RefreshCw className={syncing ? "size-4 animate-spin" : "size-4"} />
-          {syncing ? "Syncing…" : "Sync"}
+          <RefreshCw className={cn("size-3.5", syncing && "animate-spin")} />
+          <span className="sr-only">{syncing ? "Syncing…" : "Sync"}</span>
         </Button>
       </CardContent>
     </Card>
@@ -149,7 +141,7 @@ export function SyncCards({
     );
   }
   return (
-    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+    <div className="flex flex-wrap gap-2">
       {configured.map((i) => (
         <SyncCard
           key={i.id}

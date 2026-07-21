@@ -15,8 +15,10 @@ import type { ProjectDetail } from "@/types/api";
 
 import { TaskSheet } from "@/features/project-detail/TaskSheet";
 import { ActivityTab } from "@/features/project-detail/tabs/ActivityTab";
+import { CapacityTab } from "@/features/project-detail/tabs/CapacityTab";
 import { DataTab } from "@/features/project-detail/tabs/DataTab";
 import { DeliverablesTab } from "@/features/project-detail/tabs/DeliverablesTab";
+import { EvaluationTab } from "@/features/project-detail/tabs/EvaluationTab";
 import { IntegrationsTab } from "@/features/project-detail/tabs/IntegrationsTab";
 import { KpiTab } from "@/features/project-detail/tabs/KpiTab";
 import { ProjectMembersTab } from "@/features/project-detail/tabs/ProjectMembersTab";
@@ -29,6 +31,8 @@ const TABS = [
   { key: "reports", label: "Reports" },
   { key: "deliverables", label: "Deliverables" },
   { key: "kpi", label: "KPI" },
+  { key: "capacity", label: "Capacity" },
+  { key: "evaluation", label: "Evaluation" },
   { key: "provider", label: "Provider" },
   { key: "integrations", label: "Integrations" },
   { key: "members", label: "Members" },
@@ -137,6 +141,8 @@ export function ProjectDetailLayout() {
           {tab === "reports" && <ReportsTab projectId={projectId} />}
           {tab === "deliverables" && <DeliverablesTab projectId={projectId} project={project} />}
           {tab === "kpi" && <KpiTab projectId={projectId} />}
+          {tab === "capacity" && <CapacityTab projectId={projectId} />}
+          {tab === "evaluation" && <EvaluationTab projectId={projectId} />}
           {tab === "provider" && <ProviderTab projectId={projectId} project={project} />}
           {tab === "integrations" && <IntegrationsTab projectId={projectId} />}
           {tab === "members" && <ProjectMembersTab projectId={projectId} />}

@@ -1,6 +1,6 @@
-# Dossier
+# Eaglyssier
 
-**Dossier** — the complete file on every project. Generates software-project
+**Eaglyssier** — the complete file on every project. Generates software-project
 reports — sprint analytics, per-member story-point assigned-vs-completed, working
 hours, git contribution, and deliverables — as HTML and PDF, stored in object
 storage.
