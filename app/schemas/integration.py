@@ -58,7 +58,9 @@ class SyncRunOut(ApiModel):
 
 
 class SyncRunListItem(SyncRunOut):
-    integration_type: str
+    # Filled from the joined integration via model_copy in the route; the default
+    # lets model_validate(ORM row) pass before that update is applied.
+    integration_type: str = ""
 
 
 class SyncStatusOut(BaseModel):
