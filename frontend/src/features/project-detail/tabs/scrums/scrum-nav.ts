@@ -14,7 +14,7 @@ export const SCRUM_VIEWS = [
   { key: "board", label: "Board", icon: LayoutList, ready: true },
   { key: "poker", label: "Poker", icon: Spade, ready: true },
   { key: "docs", label: "Reference & AI", icon: FileText, ready: true },
-  { key: "charts", label: "Charts", icon: TrendingUp, ready: false },
+  { key: "charts", label: "Charts", icon: TrendingUp, ready: true },
   { key: "notes", label: "Standups & Retro", icon: MessageSquare, ready: false },
 ] as const satisfies ReadonlyArray<{
   key: string;

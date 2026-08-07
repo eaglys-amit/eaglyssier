@@ -919,3 +919,54 @@ export interface BreakdownAcceptOut {
   task_ids: number[];
   warnings: string[];
 }
+
+// ------------------------------------------------------- burndown & velocity
+
+export interface BurndownPoint {
+  date: string;
+  remaining_points: number;
+  completed_points: number;
+  total_points: number;
+  /** Reconstructed from resolved dates rather than sampled on the day. */
+  backfilled: boolean;
+}
+
+export interface Burndown {
+  sprint_id: number;
+  sprint_name: string;
+  state: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  /** Frozen at sprint start; the ideal line runs from here to zero. */
+  committed_points: number;
+  total_points: number;
+  completed_points: number;
+  remaining_points: number;
+  working_days: number;
+  /** True when any point was backfilled — scope changes are invisible in those. */
+  approximate: boolean;
+  points: BurndownPoint[];
+}
+
+export interface VelocitySprint {
+  sprint_id: number;
+  name: string;
+  state: string | null;
+  end_date: string | null;
+  committed_points: number;
+  completed_points: number;
+  capacity_points: number | null;
+}
+
+export interface Velocity {
+  sprints: VelocitySprint[];
+  /** Closed sprints only — an in-flight sprint is a partial number. */
+  average: number;
+  rolling3: number;
+  closed_count: number;
+}
+
+export interface SnapshotOut {
+  sprint_id: number;
+  written: number;
+}

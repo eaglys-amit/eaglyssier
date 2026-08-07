@@ -55,3 +55,52 @@ class SprintCommitmentOut(ApiModel):
     working_days: int
     unestimated_tasks: int
     over_capacity: bool
+
+
+class BurndownPoint(ApiModel):
+    date: date
+    remaining_points: float
+    completed_points: float
+    total_points: float
+    # Reconstructed after the fact rather than sampled on the day.
+    backfilled: bool = False
+
+
+class BurndownOut(BaseModel):
+    sprint_id: int
+    sprint_name: str
+    state: str | None
+    start_date: date | None
+    end_date: date | None
+    # Frozen at sprint start; the ideal line runs from here to zero.
+    committed_points: float
+    total_points: float
+    completed_points: float
+    remaining_points: float
+    working_days: int
+    # True when any point was backfilled — scope changes are invisible in those.
+    approximate: bool = False
+    points: list[BurndownPoint] = []
+
+
+class VelocityRow(ApiModel):
+    sprint_id: int
+    name: str
+    state: str | None
+    end_date: date | None
+    committed_points: float
+    completed_points: float
+    capacity_points: float | None = None
+
+
+class VelocityOut(BaseModel):
+    sprints: list[VelocityRow] = []
+    # Closed sprints only — an in-flight sprint is a partial number.
+    average: float = 0.0
+    rolling3: float = 0.0
+    closed_count: int = 0
+
+
+class SnapshotOut(BaseModel):
+    sprint_id: int
+    written: int

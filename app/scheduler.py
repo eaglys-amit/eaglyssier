@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Integration, IntegrationType
+from app.services.burndown import snapshot_all_active
 from app.services.sync import sync_integration
 
 log = logging.getLogger("scheduler")
@@ -44,6 +45,22 @@ def sync_all_enabled() -> None:
         db.close()
 
 
+def snapshot_active_sprints() -> None:
+    """Daily burndown sample for every active sprint.
+
+    build_burndown also samples on read, so a missed run costs at most a gap on
+    a day nobody opened the chart — but the scheduled job is what makes the
+    series complete for sprints nobody looks at mid-flight.
+    """
+    db = SessionLocal()
+    try:
+        written = snapshot_all_active(db)
+        if written:
+            log.info("Snapshotted %d active sprint(s) for the burndown.", written)
+    finally:
+        db.close()
+
+
 def start() -> None:
     if scheduler.running:
         return
@@ -52,6 +69,16 @@ def start() -> None:
         "interval",
         minutes=settings.sync_interval_minutes,
         id="sync_all",
+        replace_existing=True,
+    )
+    # Once a day, just after midnight UTC: a burndown wants one reading per day,
+    # not one per sync interval.
+    scheduler.add_job(
+        snapshot_active_sprints,
+        "cron",
+        hour=0,
+        minute=5,
+        id="snapshot_sprints",
         replace_existing=True,
     )
     scheduler.start()

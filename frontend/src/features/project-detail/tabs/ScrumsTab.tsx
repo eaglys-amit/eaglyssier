@@ -2,6 +2,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { BoardView } from "./scrums/BoardView";
+import { ChartsView } from "./scrums/ChartsView";
 import { DocsView } from "./scrums/DocsView";
 import { PokerView } from "./scrums/PokerView";
 import { SCRUM_VIEWS, type ScrumView } from "./scrums/scrum-nav";
@@ -41,6 +42,8 @@ export function ScrumsTab({ projectId }: { projectId: number }) {
         <PokerView projectId={projectId} sprintId={sprintId} />
       ) : view === "docs" ? (
         <DocsView projectId={projectId} sprintId={sprintId} />
+      ) : view === "charts" ? (
+        <ChartsView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
       ) : (
         <NotYet view={view} />
       )}

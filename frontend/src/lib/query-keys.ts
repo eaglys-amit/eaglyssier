@@ -47,4 +47,7 @@ export const qk = {
   // Outside the project subtree: polled by id while generating, and must not be
   // swept by a project-wide invalidation mid-job.
   breakdown: (breakdownId: number) => ["breakdowns", breakdownId] as const,
+  burndown: (id: number, sprintId: number) =>
+    ["projects", id, "scrums", "burndown", sprintId] as const,
+  velocity: (id: number) => ["projects", id, "scrums", "velocity"] as const,
 };

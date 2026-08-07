@@ -269,6 +269,9 @@ class Sprint(Base, TimestampMixin):
     member_capacities: Mapped[list["SprintMemberCapacity"]] = relationship(
         back_populates="sprint", cascade="all, delete-orphan"
     )
+    snapshots: Mapped[list["SprintSnapshot"]] = relationship(
+        back_populates="sprint", cascade="all, delete-orphan"
+    )
 
 
 class SprintMemberCapacity(Base, TimestampMixin):
@@ -724,3 +727,42 @@ class TaskBreakdown(Base, TimestampMixin):
     project: Mapped["Project"] = relationship()
     sprint: Mapped["Sprint"] = relationship()
     parent_task: Mapped["Task"] = relationship()
+
+
+class SprintSnapshot(Base, TimestampMixin):
+    """One day's reading of a sprint's scope, for the burndown chart.
+
+    Burndown can't be reconstructed from current state — you need what remained
+    on each day — so it has to be sampled. Upserted both by the daily scheduler
+    job and on every burndown read, so a dev instance with the scheduler off
+    still accumulates history.
+    """
+
+    __tablename__ = "sprint_snapshots"
+    __table_args__ = (
+        UniqueConstraint("sprint_id", "snapshot_date", name="uq_sprint_snapshot_day"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sprint_id: Mapped[int] = mapped_column(ForeignKey("sprints.id", ondelete="CASCADE"))
+    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    total_points: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default="0"
+    )
+    remaining_points: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default="0"
+    )
+    completed_points: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default="0"
+    )
+    total_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    completed_tasks: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # True when this row was reconstructed after the fact rather than sampled on
+    # the day. Scope changes can't be recovered that way, so the UI says so.
+    backfilled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    sprint: Mapped["Sprint"] = relationship(back_populates="snapshots")

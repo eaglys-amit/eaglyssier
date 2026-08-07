@@ -7,7 +7,7 @@ methods, so there is no routing conflict.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_or_404
@@ -15,12 +15,16 @@ from app.db import get_db
 from app.models import Project
 from app.schemas.data import SprintOut
 from app.schemas.scrum import (
+    BurndownOut,
+    SnapshotOut,
     SprintCommitmentOut,
     SprintCompleteIn,
     SprintCompleteOut,
     SprintCreateIn,
     SprintPatchIn,
+    VelocityOut,
 )
+from app.services import burndown as burndown_svc
 from app.services import scrum as scrum_svc
 
 router = APIRouter()
@@ -80,3 +84,53 @@ def sprint_commitment(project_id: int, sprint_id: int, db: Session = Depends(get
     """Planned points vs team capacity — the board's commitment meter."""
     get_or_404(db, Project, project_id)
     return scrum_svc.build_sprint_commitment(db, project_id, sprint_id)
+
+
+@router.get(
+    "/projects/{project_id}/sprints/{sprint_id}/burndown", response_model=BurndownOut
+)
+def sprint_burndown(project_id: int, sprint_id: int, db: Session = Depends(get_db)):
+    """Remaining points per day against the ideal line.
+
+    Samples today on the way through, so history accrues even with the scheduler
+    off. Days with no reading are absent rather than interpolated.
+    """
+    get_or_404(db, Project, project_id)
+    result = burndown_svc.build_burndown(db, project_id, sprint_id)
+    if result is None:
+        raise HTTPException(404, "Sprint not found")
+    return result
+
+
+@router.post(
+    "/projects/{project_id}/sprints/{sprint_id}/snapshot", response_model=SnapshotOut
+)
+def snapshot_sprint(project_id: int, sprint_id: int, db: Session = Depends(get_db)):
+    """Record today's reading now. Cheap and synchronous, so 200 rather than 202."""
+    get_or_404(db, Project, project_id)
+    scrum_svc.get_sprint(db, project_id, sprint_id)
+    row = burndown_svc.snapshot_sprint(db, sprint_id)
+    return SnapshotOut(sprint_id=sprint_id, written=1 if row else 0)
+
+
+@router.post(
+    "/projects/{project_id}/sprints/{sprint_id}/backfill-snapshots",
+    response_model=SnapshotOut,
+)
+def backfill_snapshots(project_id: int, sprint_id: int, db: Session = Depends(get_db)):
+    """Reconstruct history from resolved dates for a sprint that predates snapshots.
+
+    Approximate: it recovers when work finished, not when scope changed. The
+    resulting points are flagged so the chart can say so.
+    """
+    get_or_404(db, Project, project_id)
+    scrum_svc.get_sprint(db, project_id, sprint_id)
+    written = burndown_svc.backfill_snapshots(db, sprint_id)
+    return SnapshotOut(sprint_id=sprint_id, written=written)
+
+
+@router.get("/projects/{project_id}/velocity", response_model=VelocityOut)
+def project_velocity(project_id: int, limit: int = 12, db: Session = Depends(get_db)):
+    """Completed points per started sprint, with the averages for a next commitment."""
+    get_or_404(db, Project, project_id)
+    return burndown_svc.build_velocity(db, project_id, limit=limit)
