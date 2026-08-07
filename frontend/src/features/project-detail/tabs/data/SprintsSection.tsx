@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
@@ -80,11 +81,15 @@ export function SprintsSection({
   activeMemberId,
   scope,
   onToggleSprint,
+  open,
+  onOpenChange,
 }: {
   projectId: number;
   activeMemberId: number | null;
   scope: AnalysisScope;
   onToggleSprint: (id: number) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const qc = useQueryClient();
   const { data: sprints } = useQuery({
@@ -135,23 +140,26 @@ export function SprintsSection({
   const memberActive = activeMemberId != null;
 
   return (
-    <section>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold tracking-tight">Sprints & tasks</h2>
-        {sprints?.length ? (
+    <SectionPanel
+      title="Sprints & tasks"
+      count={sprints?.length}
+      open={open}
+      onOpenChange={onOpenChange}
+      actions={
+        sprints?.length ? (
           <ConfirmDialog
             trigger={
               <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-                <Trash2 className="size-4" /> Delete all sprints
+                <Trash2 className="size-4" /> Delete all
               </Button>
             }
             title="Delete all sprints?"
             description="Removes every sprint and its tasks (backlog tasks are kept). A Jira re-sync recreates them."
             onConfirm={() => deleteAll.mutate()}
           />
-        ) : null}
-      </div>
-
+        ) : null
+      }
+    >
       {!sprints?.length && !backlog.length ? (
         <EmptyState
           icon={CalendarRange}
@@ -257,6 +265,6 @@ export function SprintsSection({
           ) : null}
         </div>
       )}
-    </section>
+    </SectionPanel>
   );
 }

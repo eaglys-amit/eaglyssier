@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
+import { cn } from "@/lib/utils";
 import type { ProjectIntegrations } from "@/types/api";
 
 import { ReposSection } from "@/features/project-detail/tabs/data/ReposSection";
@@ -44,6 +46,19 @@ export function DataTab({ projectId }: { projectId: number }) {
     setParams(params, { replace: true });
   };
 
+  // The two panels split the row 50/50; collapsing one hands its width to the
+  // other. Both collapsed stays balanced rather than bunching to the left.
+  const [sprintsOpen, setSprintsOpen] = useState(true);
+  const [reposOpen, setReposOpen] = useState(true);
+  const pane = (open: boolean) =>
+    open || (!sprintsOpen && !reposOpen)
+      ? "min-w-0 flex-1"
+      : "min-w-0 lg:w-72 lg:shrink-0 lg:flex-none";
+
+  // Selecting a git source narrows the repositories panel to that provider;
+  // both panels stay visible either way.
+  const repoProvider = selected === "github" || selected === "gitlab" ? selected : undefined;
+
   return (
     <div className="space-y-6">
       {/* Row 1: member filter — common control bar for both Jira and repositories. */}
@@ -57,31 +72,30 @@ export function DataTab({ projectId }: { projectId: number }) {
       />
       {/* Row 2: Jira / GitHub / GitLab source selector. */}
       <SyncCards projectId={projectId} selected={selected} onSelect={select} />
-      {(selected === null || selected === "jira") && (
-        <SprintsSection
-          projectId={projectId}
-          activeMemberId={activeMemberId}
-          scope={scope}
-          onToggleSprint={toggleSprint}
-        />
-      )}
-      {selected === null && (
-        <ReposSection
-          projectId={projectId}
-          activeMemberId={activeMemberId}
-          scope={scope}
-          onToggleRepo={toggleRepo}
-        />
-      )}
-      {(selected === "github" || selected === "gitlab") && (
-        <ReposSection
-          projectId={projectId}
-          provider={selected}
-          activeMemberId={activeMemberId}
-          scope={scope}
-          onToggleRepo={toggleRepo}
-        />
-      )}
+      {/* Row 3: the two data domains, side by side and independently collapsible. */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <div className={cn("transition-[flex-basis,width]", pane(sprintsOpen))}>
+          <SprintsSection
+            projectId={projectId}
+            activeMemberId={activeMemberId}
+            scope={scope}
+            onToggleSprint={toggleSprint}
+            open={sprintsOpen}
+            onOpenChange={setSprintsOpen}
+          />
+        </div>
+        <div className={cn("transition-[flex-basis,width]", pane(reposOpen))}>
+          <ReposSection
+            projectId={projectId}
+            provider={repoProvider}
+            activeMemberId={activeMemberId}
+            scope={scope}
+            onToggleRepo={toggleRepo}
+            open={reposOpen}
+            onOpenChange={setReposOpen}
+          />
+        </div>
+      </div>
     </div>
   );
 }

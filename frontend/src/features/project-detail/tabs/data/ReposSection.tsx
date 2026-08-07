@@ -34,6 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDateTime, shortSha } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
@@ -593,12 +594,16 @@ export function ReposSection({
   activeMemberId,
   scope,
   onToggleRepo,
+  open,
+  onOpenChange,
 }: {
   projectId: number;
   provider?: string;
   activeMemberId: number | null;
   scope: AnalysisScope;
   onToggleRepo: (id: number) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   // One view toggle shared by every repo card in this section.
   const [view, setView] = useState<RepoView>("summary");
@@ -610,23 +615,25 @@ export function ReposSection({
   const label = provider === "github" ? "GitHub" : provider === "gitlab" ? "GitLab" : null;
 
   return (
-    <section>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-tight">
-          {label ? `${label} repositories` : "Repositories"}
-        </h2>
-        {repos?.length ? (
+    <SectionPanel
+      title={label ? `${label} repositories` : "Repositories"}
+      count={repos?.length}
+      open={open}
+      onOpenChange={onOpenChange}
+      actions={
+        repos?.length ? (
           <Tabs value={view} onValueChange={(v) => setView(v as RepoView)}>
             <TabsList>
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="pulls">
-                <GitPullRequest className="size-3.5" /> Pull requests
+                <GitPullRequest className="size-3.5" /> PRs
               </TabsTrigger>
               <TabsTrigger value="commits">Commits</TabsTrigger>
             </TabsList>
           </Tabs>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {!repos?.length ? (
         <EmptyState
           icon={FolderGit2}
@@ -652,6 +659,6 @@ export function ReposSection({
           ))}
         </div>
       )}
-    </section>
+    </SectionPanel>
   );
 }
