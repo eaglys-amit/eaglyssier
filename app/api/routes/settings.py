@@ -1,14 +1,22 @@
 """Per-project story-point reference scale."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_or_404
 from app.db import get_db
 from app.models import Project, StoryPointScale
-from app.schemas.settings import StoryPointRowOut, StoryPointScaleIn
+from app.schemas.settings import (
+    DeckOut,
+    ScaleImportIn,
+    ScaleSourceOut,
+    ScaleViolationOut,
+    StoryPointRowOut,
+    StoryPointScaleIn,
+)
+from app.services import scale as scale_svc
 
 router = APIRouter()
 
@@ -79,3 +87,50 @@ def save_story_points(project_id: int, body: StoryPointScaleIn, db: Session = De
         )
     db.commit()
     return _scale(db, project_id)
+
+
+@router.get("/projects/{project_id}/story-points/deck", response_model=DeckOut)
+def story_point_deck(project_id: int, db: Session = Depends(get_db)):
+    """The estimation deck: allowed values plus the break-it-down flags.
+
+    Consumed by the task dialog, planning poker, and AI breakdown, so an
+    estimate can only ever be a value this project's scale defines.
+    """
+    get_or_404(db, Project, project_id)
+    _ensure_defaults(db, project_id)
+    return scale_svc.build_deck(db, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/story-points/sources", response_model=list[ScaleSourceOut]
+)
+def story_point_sources(project_id: int, db: Session = Depends(get_db)):
+    """Other projects whose scale can be copied into this one."""
+    get_or_404(db, Project, project_id)
+    return scale_svc.scale_sources(db, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/story-points/import", response_model=list[StoryPointRowOut]
+)
+def import_story_points(
+    project_id: int, body: ScaleImportIn, db: Session = Depends(get_db)
+):
+    """Copy another project's scale in (replace, or merge missing values only)."""
+    get_or_404(db, Project, project_id)
+    get_or_404(db, Project, body.source_project_id, "Source project")
+    if body.source_project_id == project_id:
+        raise HTTPException(422, "That is this project's own scale")
+    return scale_svc.import_scale(
+        db, project_id, body.source_project_id, mode=body.mode
+    )
+
+
+@router.get(
+    "/projects/{project_id}/story-points/violations",
+    response_model=list[ScaleViolationOut],
+)
+def story_point_violations(project_id: int, db: Session = Depends(get_db)):
+    """Tasks whose estimate disagrees with the scale (advisory, never blocking)."""
+    get_or_404(db, Project, project_id)
+    return scale_svc.scale_violations(db, project_id)

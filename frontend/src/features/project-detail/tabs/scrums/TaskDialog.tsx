@@ -24,9 +24,9 @@ import { api } from "@/lib/api";
 import { taskLabel } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type {
+  Deck,
   ProjectMembers,
   StatusCategory,
-  StoryPointRow,
   Task,
   TaskCreateIn,
   TaskDetail,
@@ -86,16 +86,21 @@ export function TaskDialog({
     enabled: open,
   });
 
-  // The project's scale doubles as the estimate picker, so an estimate can only
-  // ever be a value the team actually uses.
-  const { data: scale } = useQuery({
-    queryKey: qk.storyPoints(projectId),
-    queryFn: () => api.get<StoryPointRow[]>(`/projects/${projectId}/story-points`),
+  // The scale is the estimate picker, so an estimate can only ever be a value
+  // the team actually uses — and a break-it-down value is labelled as such.
+  const { data: deck } = useQuery({
+    queryKey: qk.deck(projectId),
+    queryFn: () => api.get<Deck>(`/projects/${projectId}/story-points/deck`),
     enabled: open,
   });
 
   const isSynced = task?.source === "sync";
   const loading = editing && detailPending;
+
+  // The task's current estimate, when the scale doesn't list it.
+  const current = detail?.story_points ?? null;
+  const offDeck =
+    current != null && deck && !deck.points.includes(current) ? current : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -200,10 +205,21 @@ export function TaskDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>No estimate</SelectItem>
-                    {(scale ?? []).map((row) => (
-                      <SelectItem key={row.points} value={String(row.points)}>
-                        {row.points}
-                        {row.note ? ` · ${row.note}` : ""}
+                    {/* A synced task can carry an estimate the scale doesn't
+                        define. Without it as an option the Select would render
+                        empty and saving would silently wipe a real value. */}
+                    {offDeck != null ? (
+                      <SelectItem value={String(offDeck)}>
+                        {offDeck} · not on this project's scale
+                      </SelectItem>
+                    ) : null}
+                    {(deck?.points ?? []).map((points) => (
+                      <SelectItem key={points} value={String(points)}>
+                        {points}
+                        {deck?.labels[String(points)]
+                          ? ` · ${deck.labels[String(points)]}`
+                          : ""}
+                        {deck?.needs_breakdown.includes(points) ? " · break down" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -25,6 +25,9 @@ import { api, ApiError } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
 import type { StoryPointRow } from "@/types/api";
 
+import { ImportScaleDialog } from "./ImportScaleDialog";
+import { ScaleViolations } from "./ScaleViolations";
+
 const RISKS = ["None", "Low", "Normal", "Moderate", "High"];
 
 /** Per-project story-point reference scale (points -> hour band + risk). */
@@ -46,6 +49,9 @@ export function StoryPointScaleSection({ projectId }: { projectId: number }) {
       }),
     onSuccess: (saved) => {
       qc.setQueryData(qk.storyPoints(projectId), saved);
+      // The estimate deck and the violation list are both derived from the scale.
+      qc.invalidateQueries({ queryKey: qk.deck(projectId) });
+      qc.invalidateQueries({ queryKey: qk.scaleViolations(projectId) });
       toast.success("Story-point scale saved");
     },
     onError: (err: ApiError) => toast.error(err.detail || "Could not save scale"),
@@ -64,9 +70,17 @@ export function StoryPointScaleSection({ projectId }: { projectId: number }) {
             scale; duplicate point values are dropped.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => save.mutate(rows)} disabled={save.isPending}>
-          {save.isPending ? "Saving…" : "Save scale"}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <ImportScaleDialog projectId={projectId} />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => save.mutate(rows)}
+            disabled={save.isPending}
+          >
+            {save.isPending ? "Saving…" : "Save scale"}
+          </Button>
+        </div>
       </div>
       <div className="rounded-lg border bg-card">
         <Table>
@@ -184,6 +198,10 @@ export function StoryPointScaleSection({ projectId }: { projectId: number }) {
             <Plus className="size-4" /> Add row
           </Button>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <ScaleViolations projectId={projectId} />
       </div>
     </div>
   );

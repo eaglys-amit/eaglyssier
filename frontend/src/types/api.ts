@@ -638,3 +638,82 @@ export interface SprintCommitment {
   unestimated_tasks: number;
   over_capacity: boolean;
 }
+
+// --- story-point scale: the deck, import, and violations ----------------
+
+export interface Deck {
+  points: number[];
+  /** Values the scale flags as too big to work on directly. */
+  needs_breakdown: number[];
+  /** points -> the scale row's note, for a card tooltip. */
+  labels: Record<string, string>;
+}
+
+export interface StoryPointScaleSource {
+  project_id: number;
+  project_name: string;
+  project_key: string | null;
+  row_count: number;
+}
+
+export interface StoryPointScaleImportIn {
+  source_project_id: number;
+  mode: "replace" | "merge";
+}
+
+export type ScaleViolationKind =
+  | "off_deck"
+  | "needs_breakdown"
+  | "hours_below_min"
+  | "hours_above_max";
+
+export interface ScaleViolation {
+  task_id: number;
+  task_key: string;
+  title: string;
+  kind: ScaleViolationKind;
+  points: number | null;
+  hours: number | null;
+  min_hours: number | null;
+  max_hours: number | null;
+  message: string;
+}
+
+// --- identity -> member matching ----------------------------------------
+
+export interface MemberSyncCandidate {
+  identity_id: number;
+  system: string;
+  external_id: string;
+  username: string | null;
+  email: string | null;
+  display_name: string | null;
+  current_member_id: number | null;
+  match_member_id: number | null;
+  match_display_name: string | null;
+  match_reason: "email" | "username" | "display_name" | null;
+  /** exact = matched on email; likely = a unique name/handle hit. */
+  confidence: "exact" | "likely" | "none";
+  /** False when applying the match would also enrol the member. */
+  match_on_project: boolean;
+  suggested_display_name: string;
+}
+
+export interface MemberSyncPreview {
+  candidates: MemberSyncCandidate[];
+  total: number;
+  already_mapped: number;
+  matched: number;
+  unmatched: number;
+}
+
+export interface MemberSyncApplyIn {
+  mappings: { identity_id: number; member_id: number | null }[];
+  create_members: { identity_id: number; display_name: string; primary_email: string | null }[];
+}
+
+export interface MemberSyncApplyOut {
+  created: number;
+  mapped: number;
+  unmapped: number;
+}

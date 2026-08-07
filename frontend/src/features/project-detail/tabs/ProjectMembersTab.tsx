@@ -35,6 +35,8 @@ import { api, ApiError } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
 import type { Identity, ProjectMembers } from "@/types/api";
 
+import { SyncMembersDialog } from "./members/SyncMembersDialog";
+
 const UNMAPPED = "__none__";
 
 export function ProjectMembersTab({ projectId }: { projectId: number }) {
@@ -192,11 +194,16 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
       </Card>
 
       <section>
-        <h2 className="mb-1 text-sm font-semibold tracking-tight">Discovered accounts</h2>
-        <p className="mb-3 text-xs text-muted-foreground">
-          External accounts found while syncing. Map each to a project member to attribute their
-          tasks, commits, and reviews.
-        </p>
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="mb-1 text-sm font-semibold tracking-tight">Discovered accounts</h2>
+            <p className="text-xs text-muted-foreground">
+              External accounts found while syncing. Map each to a project member to attribute
+              their tasks, commits, and reviews — or match them all at once.
+            </p>
+          </div>
+          {data.identities.length ? <SyncMembersDialog projectId={projectId} /> : null}
+        </div>
         {!data.identities.length ? (
           <EmptyState
             icon={Users}

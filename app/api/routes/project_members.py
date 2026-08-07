@@ -12,10 +12,14 @@ from app.schemas.member import (
     IdentityMappingIn,
     IdentityOut,
     MemberOut,
+    MemberSyncApplyIn,
+    MemberSyncApplyOut,
+    MemberSyncPreview,
     PlatformIdentities,
     ProjectMemberAdd,
     ProjectMembersOut,
 )
+from app.services import member_sync
 
 router = APIRouter()
 
@@ -127,3 +131,23 @@ def map_identity(
         ident.member_id = body.member_id
     db.commit()
     return ident
+
+
+@router.get("/projects/{project_id}/members/sync-preview", response_model=MemberSyncPreview)
+def member_sync_preview(project_id: int, db: Session = Depends(get_db)):
+    """Proposed identity -> member matches, for review before anything is written.
+
+    Read-only on purpose: sync has never invented a member, and auto-applying a
+    name-based guess would quietly attribute one person's work to another.
+    """
+    get_or_404(db, Project, project_id)
+    return member_sync.build_preview(db, project_id)
+
+
+@router.post("/projects/{project_id}/members/sync-apply", response_model=MemberSyncApplyOut)
+def member_sync_apply(
+    project_id: int, body: MemberSyncApplyIn, db: Session = Depends(get_db)
+):
+    """Write the mappings the user confirmed, creating/enrolling members as asked."""
+    get_or_404(db, Project, project_id)
+    return member_sync.apply_mappings(db, project_id, body)

@@ -34,4 +34,8 @@ export const qk = {
   taskTree: (id: number) => ["projects", id, "scrums", "task-tree"] as const,
   commitment: (id: number, sprintId: number) =>
     ["projects", id, "scrums", "commitment", sprintId] as const,
+  deck: (id: number) => ["projects", id, "story-points", "deck"] as const,
+  scaleSources: (id: number) => ["projects", id, "story-points", "sources"] as const,
+  scaleViolations: (id: number) => ["projects", id, "story-points", "violations"] as const,
+  memberSyncPreview: (id: number) => ["projects", id, "members", "sync-preview"] as const,
 };
