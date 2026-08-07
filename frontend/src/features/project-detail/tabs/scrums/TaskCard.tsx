@@ -1,4 +1,13 @@
-import { ChevronDown, ChevronUp, GitBranch, Pencil, Trash2 } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  ChevronDown,
+  ChevronUp,
+  GitBranch,
+  GripVertical,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
@@ -13,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatPoints, taskLabel } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { BacklogSprintBucket, Task } from "@/types/api";
 
 /** Sentinel for "the backlog" — a Select value can't be null or empty. */
@@ -21,10 +31,10 @@ const BACKLOG = "backlog";
 /**
  * One row on the board.
  *
- * Movement is a Select plus up/down buttons, not drag-and-drop. That is the
- * accessible and small-screen path and it has to exist regardless (the panes
- * stack below lg, where there is nowhere to drag to), so it is the baseline;
- * dragging is layered on top in a later phase.
+ * Three ways to move it, in order of how reliable they are: the sprint Select,
+ * the up/down buttons, and — only when `draggable` — a drag handle. The first
+ * two are the baseline because the panes stack below lg (nowhere to drag to)
+ * and because they are the keyboard path; dragging is the shortcut on top.
  */
 export function TaskCard({
   task,
@@ -33,6 +43,7 @@ export function TaskCard({
   isFirst,
   isLast,
   busy,
+  draggable,
   onMove,
   onReorder,
   onEdit,
@@ -44,6 +55,8 @@ export function TaskCard({
   isFirst: boolean;
   isLast: boolean;
   busy: boolean;
+  /** Wide viewports only — see useBoardDnd. */
+  draggable: boolean;
   onMove: (sprintId: number | null) => void;
   onReorder: (direction: "up" | "down") => void;
   onEdit: () => void;
@@ -52,9 +65,35 @@ export function TaskCard({
   const [, setParams] = useSearchParams();
   const isLocal = task.source === "local";
   const isContainer = subtaskCount > 0;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+    disabled: !draggable || busy,
+  });
 
   return (
-    <div className="flex items-start gap-2 rounded-lg border bg-card px-2.5 py-2">
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(
+        "flex items-start gap-2 rounded-lg border bg-card px-2.5 py-2",
+        // The card follows the cursor via DragOverlay; this one is the gap it left.
+        isDragging && "opacity-40",
+      )}
+    >
+      {draggable ? (
+        // The grip is the ONLY drag activator. A whole-card activator would
+        // swallow clicks on the title link, the Select, and the row's buttons.
+        <button
+          type="button"
+          className="mt-1 cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" />
+          <span className="sr-only">Reorder {taskLabel(task)}</span>
+        </button>
+      ) : null}
+
       <div className="flex shrink-0 flex-col">
         <Button
           variant="ghost"
