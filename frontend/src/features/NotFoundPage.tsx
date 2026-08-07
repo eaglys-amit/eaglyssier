@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 export function NotFoundPage() {
   return (
-    <div className="pt-16">
+    <div className="p-6 pt-16">
       <EmptyState
         icon={Compass}
         title="Page not found"

@@ -55,6 +55,22 @@ class RepoDTO:
 
 
 @dataclass
+class RepoRefDTO:
+    """A repository the token can see, listed for the user to pick from.
+
+    `full_name` is what gets stored in the integration config (GitHub
+    "owner/repo", GitLab "group/project"), so it must round-trip to fetch_repos.
+    """
+
+    full_name: str
+    url: str | None = None
+    description: str | None = None
+    private: bool = False
+    archived: bool = False
+    updated_at: datetime | None = None
+
+
+@dataclass
 class CommitDTO:
     sha: str
     author: IdentityDTO | None = None

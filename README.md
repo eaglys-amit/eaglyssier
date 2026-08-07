@@ -43,10 +43,13 @@ On a project's **Integrations** tab, connect a platform:
 
 - **Jira** — Base URL `https://your-org.atlassian.net`, API token + account email,
   project key, optional board ID and story-points field (`customfield_10016`).
-- **GitHub** — token, repositories (`owner/repo`, one per line).
-  (Base URL only for GitHub Enterprise.)
-- **GitLab** — token, projects (`group/project`).
-  (Base URL for self-hosted, else defaults to gitlab.com.)
+- **GitHub** — token plus an owner (org or user), then **Fetch repositories** and
+  tick the ones to analyze. (Base URL only for GitHub Enterprise.)
+- **GitLab** — token plus a group or user namespace, then **Fetch projects** and
+  tick the ones to analyze. (Base URL for self-hosted, else defaults to gitlab.com.)
+
+Re-open **Edit** any time and hit **Refresh** to re-list and change the selection;
+the saved token is reused, so it does not need retyping.
 
 Click **Sync** on the Data tab, reconcile any identities under **Members**, then
 generate a report. A background scheduler also re-syncs enabled integrations every

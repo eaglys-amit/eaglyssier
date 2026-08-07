@@ -16,6 +16,7 @@ from app.connectors.dto import (
     CommitDTO,
     PullRequestDTO,
     RepoDTO,
+    RepoRefDTO,
     SprintDTO,
     TaskDTO,
 )
@@ -47,6 +48,19 @@ class IssueTrackerConnector(BaseConnector):
 
 
 class GitConnector(BaseConnector):
+    def discover_repos(self, owner: str | None = None) -> Iterable[RepoRefDTO]:
+        """List every repository `owner` exposes to the token, for selection.
+
+        Unlike fetch_repos this does not depend on the configured repo list — it
+        is what populates that list. `owner` empty means "everything the token
+        itself can reach".
+        """
+        raise NotImplementedError
+
+    def fetch_repo(self, full_name: str) -> RepoDTO:
+        """Resolve one configured repo by its full name (one API call)."""
+        raise NotImplementedError
+
     def fetch_repos(self) -> Iterable[RepoDTO]:
         raise NotImplementedError
 

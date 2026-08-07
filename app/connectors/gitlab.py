@@ -2,6 +2,7 @@
 
 Config keys:
   projects    -> list of project ids or url-encoded "group/project" paths (required)
+  owner       -> group/user the project picker lists from (optional, UI convenience)
   max_commits -> per-repo commit cap (default 500)
 Credentials blob: a GitLab personal/project access token.
 base_url defaults to https://gitlab.com/api/v4 (override for self-hosted).
@@ -21,6 +22,7 @@ from app.connectors.dto import (
     IdentityDTO,
     PullRequestDTO,
     RepoDTO,
+    RepoRefDTO,
     ReviewDTO,
 )
 from app.models import IntegrationType
@@ -90,26 +92,69 @@ class GitLabConnector(GitConnector):
                 break
             page = int(next_page)
 
+    def discover_repos(self, owner: str | None = None) -> Iterable[RepoRefDTO]:
+        owner = (owner or "").strip().strip("/")
+        with self._client() as c:
+            if not owner:
+                candidates = [("/projects", {"membership": "true", "order_by": "last_activity_at"})]
+            else:
+                # A namespace is either a group (possibly nested) or a user, and
+                # the path alone does not say which, so try both.
+                enc = owner.replace("/", "%2F")
+                candidates = [
+                    (f"/groups/{enc}/projects", {"include_subgroups": "true", "archived": "false"}),
+                    (f"/users/{enc}/projects", {}),
+                ]
+            last_error = ""
+            reachable = False
+            for path, params in candidates:
+                try:
+                    rows = list(self._paginate(c, path, params))
+                except ConnectorError as exc:
+                    last_error = str(exc)
+                    continue
+                reachable = True
+                if not rows:
+                    continue
+                return [
+                    RepoRefDTO(
+                        full_name=d.get("path_with_namespace") or str(d.get("id")),
+                        url=d.get("web_url"),
+                        description=d.get("description"),
+                        private=d.get("visibility") != "public",
+                        archived=bool(d.get("archived")),
+                        updated_at=_parse_dt(d.get("last_activity_at")),
+                    )
+                    for d in rows
+                ]
+        if reachable:
+            return []
+        raise ConnectorError(
+            last_error or f"GitLab namespace '{owner}' not found, or the token cannot see it."
+        )
+
+    def _repo(self, client: httpx.Client, pid: str) -> RepoDTO:
+        enc = str(pid).replace("/", "%2F")
+        r = client.get(f"/projects/{enc}")
+        if r.status_code >= 400:
+            raise ConnectorError(f"GitLab project {pid} failed: {r.status_code}")
+        d = r.json()
+        return RepoDTO(
+            external_id=str(d["id"]),
+            name=d.get("path_with_namespace", str(pid)),
+            url=d.get("web_url"),
+        )
+
+    def fetch_repo(self, full_name: str) -> RepoDTO:
+        with self._client() as c:
+            return self._repo(c, full_name)
+
     def fetch_repos(self) -> Iterable[RepoDTO]:
         projects = self.config.get("projects") or []
         if not projects:
             raise ConnectorError("GitLab integration config missing 'projects' list.")
-        out: list[RepoDTO] = []
         with self._client() as c:
-            for pid in projects:
-                enc = str(pid).replace("/", "%2F")
-                r = c.get(f"/projects/{enc}")
-                if r.status_code >= 400:
-                    raise ConnectorError(f"GitLab project {pid} failed: {r.status_code}")
-                d = r.json()
-                out.append(
-                    RepoDTO(
-                        external_id=str(d["id"]),
-                        name=d.get("path_with_namespace", str(pid)),
-                        url=d.get("web_url"),
-                    )
-                )
-        return out
+            return [self._repo(c, pid) for pid in projects]
 
     def fetch_commits(self, repo: RepoDTO) -> Iterable[CommitDTO]:
         max_commits = int(self.config.get("max_commits", 500))

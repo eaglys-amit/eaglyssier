@@ -132,6 +132,7 @@ export function ProjectsPage() {
         description="Agile project reports from Jira, GitHub, and GitLab data."
         actions={<NewProjectDialog />}
       />
+      <div className="p-6">
       {isPending ? (
         <TableSkeleton />
       ) : !projects?.length ? (
@@ -206,6 +207,7 @@ export function ProjectsPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </>
   );
 }

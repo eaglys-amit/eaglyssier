@@ -33,6 +33,13 @@ class RepoSyncOut(BaseModel):
     synced_at: datetime | None
 
 
+class RepoSyncIn(BaseModel):
+    """Sync one repo picked on the Integrations page but not yet pulled."""
+
+    provider: str
+    full_name: str
+
+
 class AnalyzeAllOut(BaseModel):
     queued: int
     commit_ids: list[int]

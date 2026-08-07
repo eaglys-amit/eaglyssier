@@ -95,6 +95,20 @@ export interface TestResult {
   message: string;
 }
 
+export interface DiscoveredRepo {
+  full_name: string;
+  url: string | null;
+  description: string | null;
+  private: boolean;
+  archived: boolean;
+  updated_at: string | null;
+}
+
+export interface RepoDiscovery {
+  owner: string | null;
+  repos: DiscoveredRepo[];
+}
+
 export interface SyncRun {
   id: number;
   integration_id: number;

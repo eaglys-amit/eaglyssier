@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarRange, ChevronDown, Trash2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -22,11 +23,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  IntegrationSyncBar,
+  IntegrationSyncStatus,
+} from "@/features/project-detail/tabs/data/IntegrationSync";
 import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type { AnalysisScope, Sprint, Task } from "@/types/api";
+
+/** Module-level so the prop identity is stable across renders. */
+const JIRA = ["jira"];
 
 /** No active member = no filter; otherwise only tasks assigned to that member. */
 function byMember(tasks: Task[], memberId: number | null): Task[] {
@@ -81,15 +89,15 @@ export function SprintsSection({
   activeMemberId,
   scope,
   onToggleSprint,
-  open,
-  onOpenChange,
+  collapsed,
+  widthAction,
 }: {
   projectId: number;
   activeMemberId: number | null;
   scope: AnalysisScope;
   onToggleSprint: (id: number) => void;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  collapsed: boolean;
+  widthAction: ReactNode;
 }) {
   const qc = useQueryClient();
   const { data: sprints } = useQuery({
@@ -143,8 +151,10 @@ export function SprintsSection({
     <SectionPanel
       title="Sprints & tasks"
       count={sprints?.length}
-      open={open}
-      onOpenChange={onOpenChange}
+      collapsed={collapsed}
+      widthAction={widthAction}
+      sync={<IntegrationSyncBar projectId={projectId} types={JIRA} />}
+      subtitle={<IntegrationSyncStatus projectId={projectId} types={JIRA} />}
       actions={
         sprints?.length ? (
           <ConfirmDialog
@@ -164,7 +174,7 @@ export function SprintsSection({
         <EmptyState
           icon={CalendarRange}
           title="No sprints synced"
-          hint="Connect and sync Jira to pull sprints and tasks."
+          hint="Sync Jira above to pull sprints and tasks."
         />
       ) : (
         <div className="space-y-2">

@@ -141,6 +141,7 @@ export function MembersPage() {
         onOpenChange={(open) => setDialog((d) => ({ ...d, open }))}
         member={dialog.member}
       />
+      <div className="p-6">
       {isPending ? (
         <TableSkeleton />
       ) : !members?.length ? (
@@ -207,6 +208,7 @@ export function MembersPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </>
   );
 }

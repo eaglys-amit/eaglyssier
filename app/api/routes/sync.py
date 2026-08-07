@@ -1,16 +1,16 @@
 """Trigger syncs and report their live status (polled by the SPA)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_or_404, run_in_session
 from app.db import get_db
-from app.models import GitRepo, Integration, Project, SyncRun, SyncStatus
+from app.models import GitRepo, Integration, IntegrationType, Project, SyncRun, SyncStatus
 from app.schemas.integration import SyncRunListItem, SyncRunOut, SyncStatusOut
-from app.schemas.jobs import RepoSyncOut
-from app.services.sync import sync_integration, sync_repo
+from app.schemas.jobs import RepoSyncIn, RepoSyncOut
+from app.services.sync import register_repo, sync_integration, sync_repo
 
 router = APIRouter()
 
@@ -86,6 +86,38 @@ def trigger_repo_sync(
     repo.sync_error = None
     db.commit()
     background.add_task(run_in_session, sync_repo, repo_id)
+    return RepoSyncOut.model_validate(repo, from_attributes=True)
+
+
+@router.post("/projects/{project_id}/repos/sync", response_model=RepoSyncOut, status_code=202)
+def trigger_configured_repo_sync(
+    project_id: int,
+    body: RepoSyncIn,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Sync a repo that is selected on the Integrations page but not yet pulled.
+
+    Resolving it against the provider is one API call and happens inline so the
+    response carries a real repo id for the SPA to poll; the commits/PRs pull
+    runs in the background like every other repo sync.
+    """
+    get_or_404(db, Project, project_id)
+    try:
+        provider = IntegrationType(body.provider)
+    except ValueError:
+        raise HTTPException(400, f"Unknown provider {body.provider}")
+    try:
+        repo = register_repo(db, project_id, provider, body.full_name.strip())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:  # noqa: BLE001 - connector/transport failure
+        raise HTTPException(400, f"Could not resolve {body.full_name}: {str(exc)[:250]}")
+
+    repo.sync_status = "running"
+    repo.sync_error = None
+    db.commit()
+    background.add_task(run_in_session, sync_repo, repo.id)
     return RepoSyncOut.model_validate(repo, from_attributes=True)
 
 

@@ -8,7 +8,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
@@ -34,6 +34,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  IntegrationSyncBar,
+  IntegrationSyncStatus,
+} from "@/features/project-detail/tabs/data/IntegrationSync";
 import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatDateTime, shortSha } from "@/lib/format";
@@ -42,6 +46,7 @@ import type {
   AnalysisScope,
   Commit,
   CommitAnalysis,
+  ProjectIntegrations,
   PullRequest,
   Repo,
   RepoSummary,
@@ -49,6 +54,9 @@ import type {
 } from "@/types/api";
 
 const isRunning = (s: string | undefined | null) => s === "running";
+
+/** Module-level so the prop identity is stable across renders. */
+const GIT_TYPES = ["github", "gitlab"];
 
 type RepoView = "summary" | "pulls" | "commits";
 
@@ -90,8 +98,8 @@ function RepoSummaryPanel({ repo }: { repo: Repo }) {
 
   return (
     <div className="space-y-3 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {jobBadge(status, { none: "Not summarized" })}
           {data?.summarized_at ? (
             <span className="text-xs text-muted-foreground">
@@ -294,7 +302,7 @@ function CommitList({ repoId, memberId }: { repoId: number; memberId: number | n
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-3 px-4 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3">
         <span className="text-xs text-muted-foreground">
           {memberId != null
             ? `${commits.length} of ${allCommits.length} commits (member filter)`
@@ -463,6 +471,58 @@ function PrTable({ repoId, memberId }: { repoId: number; memberId: number | null
 
 /* -------------------------------------------------------------------- repos */
 
+/** A configured repo paired with its synced row, if it has one yet. */
+type RepoEntry = { fullName: string; provider: string; repo: Repo | null };
+
+/** A repo picked on the Integrations tab that has never been pulled. */
+function PendingRepoRow({
+  projectId,
+  fullName,
+  provider,
+  indent,
+}: {
+  projectId: number;
+  fullName: string;
+  provider: string;
+  indent: boolean;
+}) {
+  const qc = useQueryClient();
+  const sync = useMutation({
+    mutationFn: () =>
+      api.post<RepoSync>(`/projects/${projectId}/repos/sync`, {
+        provider,
+        full_name: fullName,
+      }),
+    onSuccess: () => {
+      // The repo row now exists; the card that replaces this one polls it.
+      qc.invalidateQueries({ queryKey: qk.repos(projectId) });
+      toast.success(`Syncing ${fullName}…`);
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not start sync"),
+  });
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-dashed bg-card/40 px-4 py-2.5">
+      {indent ? <span className="size-4 shrink-0" /> : null}
+      <span className="size-4 shrink-0" />
+      <PlatformIcon platform={provider} size={14} />
+      <span className="truncate text-sm font-medium">{fullName}</span>
+      <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">Never synced</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2"
+        disabled={sync.isPending}
+        onClick={() => sync.mutate()}
+      >
+        <RefreshCw className={sync.isPending ? "size-3.5 animate-spin" : "size-3.5"} />
+        {sync.isPending ? "Starting…" : "Sync"}
+        <span className="sr-only">{fullName}</span>
+      </Button>
+    </div>
+  );
+}
+
 function RepoCard({
   projectId,
   repo,
@@ -547,13 +607,14 @@ function RepoCard({
         ) : null}
         <Button
           variant="ghost"
-          size="icon"
-          className="size-7"
+          size="sm"
+          className="h-7 px-2"
           disabled={syncing}
           onClick={() => trigger.mutate()}
         >
           <RefreshCw className={syncing ? "size-3.5 animate-spin" : "size-3.5"} />
-          <span className="sr-only">Sync repository</span>
+          {syncing ? "Syncing…" : "Sync"}
+          <span className="sr-only">{repo.name}</span>
         </Button>
         <ConfirmDialog
           trigger={
@@ -590,38 +651,65 @@ function RepoCard({
 
 export function ReposSection({
   projectId,
-  provider,
   activeMemberId,
   scope,
   onToggleRepo,
-  open,
-  onOpenChange,
+  collapsed,
+  widthAction,
 }: {
   projectId: number;
-  provider?: string;
   activeMemberId: number | null;
   scope: AnalysisScope;
   onToggleRepo: (id: number) => void;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  collapsed: boolean;
+  widthAction: ReactNode;
 }) {
   // One view toggle shared by every repo card in this section.
   const [view, setView] = useState<RepoView>("summary");
-  const { data } = useQuery({
+  const { data: repos } = useQuery({
     queryKey: qk.repos(projectId),
     queryFn: () => api.get<Repo[]>(`/projects/${projectId}/repos`),
   });
-  const repos = provider ? data?.filter((r) => r.provider === provider) : data;
-  const label = provider === "github" ? "GitHub" : provider === "gitlab" ? "GitLab" : null;
+  const { data: integrations } = useQuery({
+    queryKey: qk.integrations(projectId),
+    queryFn: () => api.get<ProjectIntegrations>(`/projects/${projectId}/integrations`),
+  });
+
+  const gitIntegrations = (integrations?.items ?? []).filter((i) =>
+    GIT_TYPES.includes(i.type),
+  );
+
+  // The picked repos are known from the integration config, so list them all —
+  // one that has never been pulled still gets a row and its own sync button
+  // instead of only appearing after a full integration sync.
+  const entries: RepoEntry[] = [];
+  const claimed = new Set<number>();
+  for (const integ of gitIntegrations) {
+    const cfg = integ.config as Record<string, unknown>;
+    for (const name of ((cfg.repos ?? cfg.projects ?? []) as string[]) ?? []) {
+      const repo = repos?.find((r) => r.name === name && r.provider === integ.type) ?? null;
+      if (repo) claimed.add(repo.id);
+      entries.push({ fullName: name, provider: integ.type, repo });
+    }
+  }
+  // Synced repos the config no longer lists (deselected, renamed) still belong
+  // here — the next full sync is what prunes them.
+  for (const r of repos ?? []) {
+    if (!claimed.has(r.id)) entries.push({ fullName: r.name, provider: r.provider, repo: r });
+  }
+  entries.sort((a, b) => a.fullName.localeCompare(b.fullName));
+  const pendingCount = entries.filter((e) => !e.repo).length;
 
   return (
     <SectionPanel
-      title={label ? `${label} repositories` : "Repositories"}
-      count={repos?.length}
-      open={open}
-      onOpenChange={onOpenChange}
+      title="Repositories"
+      count={entries.length || undefined}
+      collapsed={collapsed}
+      widthAction={widthAction}
+      sync={<IntegrationSyncBar projectId={projectId} types={GIT_TYPES} />}
+      subtitle={<IntegrationSyncStatus projectId={projectId} types={GIT_TYPES} />}
       actions={
-        repos?.length ? (
+        entries.length ? (
           <Tabs value={view} onValueChange={(v) => setView(v as RepoView)}>
             <TabsList>
               <TabsTrigger value="summary">Summary</TabsTrigger>
@@ -634,29 +722,45 @@ export function ReposSection({
         ) : null
       }
     >
-      {!repos?.length ? (
+      {pendingCount ? (
+        <p className="mb-2 text-xs text-muted-foreground">
+          {pendingCount} of {entries.length} never synced — sync a provider above, or a single
+          repository from its row.
+        </p>
+      ) : null}
+      {!entries.length ? (
         <EmptyState
           icon={FolderGit2}
-          title={label ? `No ${label} repositories synced` : "No repositories synced"}
+          title="No repositories selected"
           hint={
-            label
-              ? `Run a ${label} sync to pull repositories, commits, and pull requests.`
-              : "Connect GitHub or GitLab and run a sync to pull repositories, commits, and pull requests."
+            gitIntegrations.length
+              ? "Pick repositories on the Integrations tab, then sync them here."
+              : "Connect GitHub or GitLab and pick repositories on the Integrations tab."
           }
         />
       ) : (
         <div className="space-y-2">
-          {repos.map((r) => (
-            <RepoCard
-              key={r.id}
-              projectId={projectId}
-              repo={r}
-              view={view}
-              activeMemberId={activeMemberId}
-              scope={scope}
-              onToggleRepo={onToggleRepo}
-            />
-          ))}
+          {entries.map((e) =>
+            e.repo ? (
+              <RepoCard
+                key={e.repo.id}
+                projectId={projectId}
+                repo={e.repo}
+                view={view}
+                activeMemberId={activeMemberId}
+                scope={scope}
+                onToggleRepo={onToggleRepo}
+              />
+            ) : (
+              <PendingRepoRow
+                key={`${e.provider}:${e.fullName}`}
+                projectId={projectId}
+                fullName={e.fullName}
+                provider={e.provider}
+                indent={activeMemberId != null}
+              />
+            ),
+          )}
         </div>
       )}
     </SectionPanel>

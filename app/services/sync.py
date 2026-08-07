@@ -19,6 +19,7 @@ from app.models import (
     Commit,
     GitRepo,
     Integration,
+    IntegrationType,
     PRReview,
     PullRequest,
     Sprint,
@@ -127,6 +128,41 @@ def sync_integration(db: Session, integration_id: int) -> SyncRun | None:
     run.stats = stats
     db.commit()
     return run
+
+
+def register_repo(
+    db: Session, project_id: int, provider: IntegrationType, full_name: str
+) -> GitRepo:
+    """Resolve one *configured* repo against its provider and upsert its row.
+
+    A repo picked on the Integrations page has no GitRepo row until something
+    pulls it, so the Data tab lists it with nothing to sync. This creates that
+    row from a single provider lookup, letting one selected repo be synced
+    without a full integration sync. Raises (does not record) on failure — the
+    caller is a request, not a background job.
+    """
+    integration = db.execute(
+        select(Integration).where(
+            Integration.project_id == project_id,
+            Integration.type == provider,
+            Integration.enabled.is_(True),
+        )
+    ).scalars().first()
+    if integration is None:
+        raise ValueError(f"No enabled {provider.value} integration for this project.")
+
+    config = integration.config or {}
+    configured = config.get("repos") or config.get("projects") or []
+    if full_name not in configured:
+        raise ValueError(f"{full_name} is not selected on the Integrations page.")
+
+    connector = build_connector(integration)
+    if not isinstance(connector, GitConnector):
+        raise ValueError(f"{provider.value} connector cannot sync repositories.")
+
+    repo = _upsert_repo(db, integration, connector.fetch_repo(full_name))
+    db.commit()
+    return repo
 
 
 def sync_repo(db: Session, repo_id: int) -> None:

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Plug, Plus, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Plus, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { RepoPicker } from "@/features/project-detail/tabs/integrations/RepoPicker";
 import { api, ApiError } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
 import type { Integration, ProjectIntegrations, TestResult } from "@/types/api";
@@ -45,6 +45,17 @@ function ConnectForm({
   const qc = useQueryClient();
   const cfg = (existing?.config ?? {}) as Record<string, unknown>;
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
+
+  // Base URL and token are controlled because the repo picker calls the platform
+  // with whatever is typed right now, before anything has been saved.
+  const [baseUrl, setBaseUrl] = useState(existing?.base_url ?? "");
+  const [token, setToken] = useState("");
+  const isGit = type === "github" || type === "gitlab";
+  const repoKey = type === "github" ? "repos" : "projects";
+  const [owner, setOwner] = useState((cfg.owner as string) ?? "");
+  const [repos, setRepos] = useState<string[]>(
+    () => ((cfg.repos ?? cfg.projects ?? []) as string[]) ?? [],
+  );
 
   const save = useMutation({
     mutationFn: (body: { base_url: string; token: string; config: Record<string, unknown> }) =>
@@ -75,14 +86,12 @@ function ConnectForm({
           config.project_key = val("project_key");
           if (val("board_id")) config.board_id = val("board_id");
           if (val("story_points_field")) config.story_points_field = val("story_points_field");
-        } else if (type === "github") {
-          config.repos = val("repos");
-          if (val("max_commits")) config.max_commits = val("max_commits");
-        } else if (type === "gitlab") {
-          config.projects = val("projects");
+        } else if (isGit) {
+          config[repoKey] = repos;
+          config.owner = owner.trim();
           if (val("max_commits")) config.max_commits = val("max_commits");
         }
-        save.mutate({ base_url: val("base_url"), token: val("token"), config });
+        save.mutate({ base_url: baseUrl.trim(), token: token.trim(), config });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -90,8 +99,8 @@ function ConnectForm({
           <Label htmlFor={`${type}-base-url`}>Base URL</Label>
           <Input
             id={`${type}-base-url`}
-            name="base_url"
-            defaultValue={existing?.base_url ?? ""}
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
             placeholder={FORM_HELP[type]?.baseUrl}
           />
         </div>
@@ -99,8 +108,9 @@ function ConnectForm({
           <Label htmlFor={`${type}-token`}>Token</Label>
           <Input
             id={`${type}-token`}
-            name="token"
             type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
             placeholder={
               existing?.has_credentials ? "Leave blank to keep saved token" : FORM_HELP[type]?.token
             }
@@ -148,21 +158,19 @@ function ConnectForm({
           </>
         ) : null}
 
-        {type === "github" || type === "gitlab" ? (
+        {isGit ? (
           <>
-            <div className="grid gap-1.5 sm:col-span-2">
-              <Label htmlFor={`${type}-repos`}>
-                {type === "github" ? "Repositories" : "Projects"} (one per line or comma-separated)
-              </Label>
-              <Textarea
-                id={`${type}-repos`}
-                name={type === "github" ? "repos" : "projects"}
-                rows={3}
-                defaultValue={((cfg.repos ?? cfg.projects ?? []) as string[]).join("\n")}
-                placeholder={type === "github" ? "owner/repo" : "group/project"}
-                className="font-mono text-xs"
-              />
-            </div>
+            <RepoPicker
+              projectId={projectId}
+              type={type}
+              owner={owner}
+              onOwnerChange={setOwner}
+              baseUrl={baseUrl}
+              token={token}
+              hasSavedToken={Boolean(existing?.has_credentials)}
+              selected={repos}
+              onChange={setRepos}
+            />
             <div className="grid gap-1.5">
               <Label htmlFor={`${type}-max-commits`}>Max commits per sync (optional)</Label>
               <Input
@@ -302,10 +310,14 @@ function PlatformCard({
               ) : (
                 <>
                   <dt className="text-muted-foreground">
+                    {type === "github" ? "Owner" : "Group"}
+                  </dt>
+                  <dd className="font-mono text-xs">{(cfg.owner as string) || "—"}</dd>
+                  <dt className="text-muted-foreground">
                     {type === "github" ? "Repos" : "Projects"}
                   </dt>
-                  <dd className="font-mono text-xs">
-                    {((cfg.repos ?? cfg.projects ?? []) as string[]).join(", ") || "—"}
+                  <dd className="font-mono text-xs break-words">
+                    {((cfg.repos ?? cfg.projects ?? []) as string[]).join(", ") || "None selected"}
                   </dd>
                 </>
               )}
@@ -344,10 +356,7 @@ export function IntegrationsTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4">
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Plug className="size-4" />
-        Connect the platforms this project pulls data from. Tokens are encrypted at rest.
-      </p>
+      {/* The page header carries the intro copy for this section. */}
       <div className="grid gap-4 lg:grid-cols-2">
         {data.types.map((t) => (
           <PlatformCard

@@ -18,7 +18,8 @@ const NAV = [
 export function AppSidebar() {
   return (
     <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
-      <div className="flex items-center gap-2 px-4 py-5">
+      {/* h-19 + border-b matches PageHeader, so the two line up across the seam. */}
+      <div className="flex h-19 shrink-0 items-center gap-2 border-b px-4">
         <img src={dossierMark} alt="Eaglyssier" className="size-8 shrink-0" />
         <div className="leading-tight">
           <div className="text-sm font-semibold tracking-tight">Eaglyssier</div>

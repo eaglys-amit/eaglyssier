@@ -18,9 +18,21 @@ _REGISTRY: dict[IntegrationType, type[BaseConnector]] = {
 }
 
 
-def build_connector(integration: Integration) -> BaseConnector:
-    cls = _REGISTRY.get(integration.type)
+def build_connector_of(
+    itype: IntegrationType,
+    base_url: str | None,
+    token: str | None,
+    config: dict | None = None,
+) -> BaseConnector:
+    """Connector from loose parts — for calls made before anything is saved."""
+    cls = _REGISTRY.get(itype)
     if cls is None:
-        raise ConnectorError(f"No connector for integration type {integration.type}")
+        raise ConnectorError(f"No connector for integration type {itype}")
+    return cls(base_url=base_url, token=token, config=config or {})
+
+
+def build_connector(integration: Integration) -> BaseConnector:
     token = decrypt(integration.credentials_enc) if integration.credentials_enc else None
-    return cls(base_url=integration.base_url, token=token, config=integration.config or {})
+    return build_connector_of(
+        integration.type, integration.base_url, token, integration.config or {}
+    )

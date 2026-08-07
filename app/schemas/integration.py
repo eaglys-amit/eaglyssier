@@ -47,6 +47,32 @@ class TestResultOut(BaseModel):
     message: str
 
 
+class RepoDiscoveryIn(BaseModel):
+    """Body for the repo picker: enough to talk to the platform, nothing stored.
+
+    `token` blank falls back to the integration's saved credentials, so the
+    picker can be refreshed while editing without retyping the token.
+    """
+
+    owner: str | None = None
+    base_url: str | None = None
+    token: str | None = None
+
+
+class DiscoveredRepoOut(BaseModel):
+    full_name: str
+    url: str | None = None
+    description: str | None = None
+    private: bool = False
+    archived: bool = False
+    updated_at: datetime | None = None
+
+
+class RepoDiscoveryOut(BaseModel):
+    owner: str | None = None
+    repos: list[DiscoveredRepoOut]
+
+
 class SyncRunOut(ApiModel):
     id: int
     integration_id: int

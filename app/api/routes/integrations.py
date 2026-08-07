@@ -6,18 +6,21 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_or_404
-from app.connectors import build_connector
-from app.connectors.base import ConnectorError
+from app.connectors import build_connector, build_connector_of
+from app.connectors.base import ConnectorError, GitConnector
 from app.db import get_db
 from app.models import Integration, IntegrationType, MemberIdentity, Project
 from app.schemas.integration import (
+    DiscoveredRepoOut,
     IntegrationIn,
     IntegrationOut,
     IntegrationTypeOut,
     ProjectIntegrationsOut,
+    RepoDiscoveryIn,
+    RepoDiscoveryOut,
     TestResultOut,
 )
-from app.services.crypto import encrypt
+from app.services.crypto import decrypt, encrypt
 
 router = APIRouter()
 
@@ -72,14 +75,13 @@ def _build_config(itype: IntegrationType, raw: dict) -> dict:
         if spf:
             cfg["story_points_field"] = spf
         return cfg
-    if itype == IntegrationType.github:
-        cfg = {"repos": _clean_list(raw.get("repos", []))}
-        mc = _int_or_none(raw.get("max_commits"))
-        if mc is not None:
-            cfg["max_commits"] = mc
-        return cfg
-    if itype == IntegrationType.gitlab:
-        cfg = {"projects": _clean_list(raw.get("projects", []))}
+    if itype in (IntegrationType.github, IntegrationType.gitlab):
+        key = "repos" if itype == IntegrationType.github else "projects"
+        cfg = {key: _clean_list(raw.get(key, []))}
+        # Remembered so the repo picker can re-list without asking again.
+        owner = str(raw.get("owner", "") or "").strip().strip("/")
+        if owner:
+            cfg["owner"] = owner
         mc = _int_or_none(raw.get("max_commits"))
         if mc is not None:
             cfg["max_commits"] = mc
@@ -137,6 +139,63 @@ def save_integration(
         integration.credentials_enc = encrypt(body.token.strip())
     db.commit()
     return integration_out(integration)
+
+
+@router.post(
+    "/projects/{project_id}/integrations/{itype}/repos",
+    response_model=RepoDiscoveryOut,
+)
+def discover_repos(
+    project_id: int,
+    itype: str,
+    body: RepoDiscoveryIn,
+    db: Session = Depends(get_db),
+):
+    """List the repositories an owner exposes, so the user can pick from them.
+
+    Runs against the values currently in the form, not the saved row, so the
+    picker works before the integration exists. Nothing is written here.
+    """
+    try:
+        integ_type = IntegrationType(itype)
+    except ValueError:
+        raise HTTPException(400, f"Unknown integration type {itype}")
+    if integ_type not in (IntegrationType.github, IntegrationType.gitlab):
+        raise HTTPException(400, f"{itype} does not have repositories to list")
+    get_or_404(db, Project, project_id)
+
+    existing = db.execute(
+        select(Integration).where(
+            Integration.project_id == project_id, Integration.type == integ_type
+        )
+    ).scalar_one_or_none()
+
+    token = (body.token or "").strip()
+    if not token and existing and existing.credentials_enc:
+        token = decrypt(existing.credentials_enc)
+    if not token:
+        raise HTTPException(400, "A token is required to list repositories.")
+
+    base_url = (body.base_url or "").strip() or (existing.base_url if existing else None)
+    owner = (body.owner or "").strip().strip("/")
+    if not owner and existing:
+        owner = str((existing.config or {}).get("owner") or "")
+
+    connector = build_connector_of(integ_type, base_url, token, {})
+    if not isinstance(connector, GitConnector):
+        raise HTTPException(400, f"{itype} does not have repositories to list")
+    try:
+        repos = list(connector.discover_repos(owner))
+    except ConnectorError as exc:
+        raise HTTPException(400, str(exc)[:300])
+    except Exception as exc:  # noqa: BLE001 - surface transport errors to the form
+        raise HTTPException(400, f"Could not list repositories: {str(exc)[:280]}")
+
+    repos.sort(key=lambda r: r.full_name.lower())
+    return RepoDiscoveryOut(
+        owner=owner or None,
+        repos=[DiscoveredRepoOut(**vars(r)) for r in repos],
+    )
 
 
 @router.post("/integrations/{integration_id}/test", response_model=TestResultOut)

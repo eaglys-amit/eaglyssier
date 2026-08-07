@@ -2,6 +2,7 @@
 
 Config keys:
   repos       -> list of "owner/name" full names to analyze (required)
+  owner       -> org/user the repo picker lists from (optional, UI convenience)
   max_commits -> per-repo commit cap for stats fetch (default 300)
 Credentials blob: a GitHub personal access token (or fine-grained token).
 base_url defaults to https://api.github.com (override for GitHub Enterprise).
@@ -21,6 +22,7 @@ from app.connectors.dto import (
     IdentityDTO,
     PullRequestDTO,
     RepoDTO,
+    RepoRefDTO,
     ReviewDTO,
 )
 from app.models import IntegrationType
@@ -75,21 +77,61 @@ class GitHubConnector(GitConnector):
                 break
             page += 1
 
+    def discover_repos(self, owner: str | None = None) -> Iterable[RepoRefDTO]:
+        owner = (owner or "").strip().strip("/")
+        with self._client() as c:
+            if not owner:
+                # No owner: everything the token itself is a member of.
+                candidates = [("/user/repos", {"affiliation": "owner,collaborator,organization_member"})]
+            else:
+                # An owner is either an org or a user and we cannot tell from the
+                # name alone, so try the org route first and fall back.
+                candidates = [(f"/orgs/{owner}/repos", {"type": "all"}), (f"/users/{owner}/repos", {})]
+            last_error = ""
+            reachable = False
+            for path, params in candidates:
+                try:
+                    rows = list(self._paginate(c, path, {"sort": "updated", **params}))
+                except ConnectorError as exc:
+                    last_error = str(exc)
+                    continue
+                reachable = True
+                if not rows:
+                    continue  # e.g. the name is a user, not an empty org
+                return [
+                    RepoRefDTO(
+                        full_name=d["full_name"],
+                        url=d.get("html_url"),
+                        description=d.get("description"),
+                        private=bool(d.get("private")),
+                        archived=bool(d.get("archived")),
+                        updated_at=_parse_dt(d.get("pushed_at") or d.get("updated_at")),
+                    )
+                    for d in rows
+                ]
+        if reachable:
+            return []
+        raise ConnectorError(
+            last_error or f"GitHub owner '{owner}' not found, or the token cannot see it."
+        )
+
+    def _repo(self, client: httpx.Client, full_name: str) -> RepoDTO:
+        r = client.get(f"/repos/{full_name}")
+        if r.status_code >= 400:
+            raise ConnectorError(f"GitHub repo {full_name} failed: {r.status_code}")
+        d = r.json()
+        return RepoDTO(external_id=str(d["id"]), name=d["full_name"], url=d.get("html_url"))
+
+    def fetch_repo(self, full_name: str) -> RepoDTO:
+        with self._client() as c:
+            return self._repo(c, full_name)
+
     def fetch_repos(self) -> Iterable[RepoDTO]:
         names = self.config.get("repos") or []
         if not names:
             raise ConnectorError("GitHub integration config missing 'repos' list.")
-        out: list[RepoDTO] = []
         with self._client() as c:
-            for full in names:
-                r = c.get(f"/repos/{full}")
-                if r.status_code >= 400:
-                    raise ConnectorError(f"GitHub repo {full} failed: {r.status_code}")
-                d = r.json()
-                out.append(
-                    RepoDTO(external_id=str(d["id"]), name=d["full_name"], url=d.get("html_url"))
-                )
-        return out
+            return [self._repo(c, full) for full in names]
 
     @staticmethod
     def _identity(user: dict | None) -> IdentityDTO | None:
