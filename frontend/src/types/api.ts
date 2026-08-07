@@ -717,3 +717,108 @@ export interface MemberSyncApplyOut {
   mapped: number;
   unmapped: number;
 }
+
+// ---------------------------------------------------------- planning poker
+
+export type PokerRoundStatus = "voting" | "revealed" | "applied" | "skipped";
+
+export interface PokerVote {
+  member_id: number;
+  display_name: string;
+  voted_at: string | null;
+  /** Withheld by the server until the round is revealed — gate on round.status. */
+  points: number | null;
+  abstain: boolean | null;
+}
+
+export interface PokerParticipant {
+  member_id: number;
+  display_name: string;
+  has_voted: boolean;
+  /** Voted, then left the project; their card still counts for this round. */
+  off_project: boolean;
+}
+
+export interface PokerStats {
+  votes: number;
+  abstains: number;
+  low: number | null;
+  high: number | null;
+  median: number | null;
+  consensus: boolean;
+  /** The median rounded up to a real card. */
+  suggested: number | null;
+}
+
+export interface PokerRound {
+  id: number;
+  session_id: number;
+  task_id: number;
+  task_key: string | null;
+  task_title: string;
+  attempt: number;
+  status: PokerRoundStatus;
+  final_points: number | null;
+  note: string | null;
+  revealed_at: string | null;
+  applied_at: string | null;
+  votes: PokerVote[];
+  /** Null while voting. */
+  stats: PokerStats | null;
+}
+
+export interface PokerQueueItem {
+  task_id: number;
+  task_key: string | null;
+  task_title: string;
+  story_points: number | null;
+  round_status: PokerRoundStatus | null;
+  attempts: number;
+}
+
+export interface PokerSession {
+  id: number;
+  project_id: number;
+  sprint_id: number | null;
+  sprint_name: string | null;
+  name: string;
+  status: "open" | "closed";
+  /** Snapshotted at creation, so a mid-session scale edit can't change the cards. */
+  deck: number[];
+  breakdown_points: number[];
+  created_at: string | null;
+  closed_at: string | null;
+  queued: number;
+  estimated: number;
+}
+
+export interface PokerSessionDetail extends PokerSession {
+  participants: PokerParticipant[];
+  current_round: PokerRound | null;
+  queue: PokerQueueItem[];
+}
+
+export interface PokerSessionCreateIn {
+  name?: string | null;
+  sprint_id?: number | null;
+  /** Empty = every unestimated leaf task in the sprint. */
+  task_ids?: number[];
+}
+
+export interface PokerVoteIn {
+  member_id: number;
+  points: number | null;
+  abstain: boolean;
+}
+
+export interface PokerApplyIn {
+  points: number;
+  note?: string | null;
+}
+
+export interface PokerApplyOut {
+  round: PokerRound;
+  task_id: number;
+  story_points: number;
+  warnings: string[];
+}

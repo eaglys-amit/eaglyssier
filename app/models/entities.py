@@ -553,3 +553,93 @@ class SyncRun(Base, TimestampMixin):
     error: Mapped[str | None] = mapped_column(Text)
 
     integration: Mapped["Integration"] = relationship()
+
+
+class PokerSession(Base, TimestampMixin):
+    """A planning-poker session: an ordered set of tasks to estimate together.
+
+    DB-backed with 2s frontend polling rather than websockets — this app has no
+    broadcast layer, and a poker round changes state a handful of times per
+    minute. Participants self-identify by picking a Member, because there is no
+    auth; votes are therefore advisory, which is fine for a team in a room.
+    """
+
+    __tablename__ = "poker_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    # SET NULL: a session may outlive the sprint it was planning for.
+    sprint_id: Mapped[int | None] = mapped_column(ForeignKey("sprints.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="open", server_default="open"
+    )  # open | closed
+    # Deck snapshotted from StoryPointScale at creation, so editing the project
+    # scale mid-session can't change the cards under the players.
+    deck: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # Values the scale flagged needs_breakdown when the deck was taken.
+    breakdown_points: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    project: Mapped["Project"] = relationship()
+    sprint: Mapped["Sprint"] = relationship()
+    rounds: Mapped[list["PokerRound"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+
+
+class PokerRound(Base, TimestampMixin):
+    """One task's estimation round. `attempt` allows a re-vote after discussion."""
+
+    __tablename__ = "poker_rounds"
+    __table_args__ = (
+        UniqueConstraint("session_id", "task_id", "attempt", name="uq_poker_round_task_attempt"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("poker_sessions.id", ondelete="CASCADE")
+    )
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # voting   -> vote values are withheld from the API payload
+    # revealed -> values visible; applied -> written to Task.story_points
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="voting", server_default="voting"
+    )  # voting | revealed | applied | skipped
+    final_points: Mapped[float | None] = mapped_column(Float)
+    note: Mapped[str | None] = mapped_column(Text)  # what the discussion settled
+    revealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    session: Mapped["PokerSession"] = relationship(back_populates="rounds")
+    task: Mapped["Task"] = relationship()
+    votes: Mapped[list["PokerVote"]] = relationship(
+        back_populates="round", cascade="all, delete-orphan"
+    )
+
+
+class PokerVote(Base, TimestampMixin):
+    """One member's card for one round.
+
+    Upserted on (round, member): changing your mind before the reveal replaces
+    the card rather than adding a second one.
+    """
+
+    __tablename__ = "poker_votes"
+    __table_args__ = (
+        UniqueConstraint("round_id", "member_id", name="uq_poker_vote_round_member"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    round_id: Mapped[int] = mapped_column(ForeignKey("poker_rounds.id", ondelete="CASCADE"))
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"))
+    points: Mapped[float | None] = mapped_column(Float)  # NULL when abstaining
+    # The "?" card: I don't know enough to estimate this. Distinct from not
+    # having voted, and it must not drag the consensus toward zero.
+    abstain: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    round: Mapped["PokerRound"] = relationship(back_populates="votes")
+    member: Mapped["Member"] = relationship()

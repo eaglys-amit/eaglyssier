@@ -13,6 +13,7 @@ from app.api.routes import (
     integrations,
     kpi,
     members,
+    poker,
     project_members,
     projects,
     provider,
@@ -43,5 +44,6 @@ for _r in (
     # Scrums: the write side of sprints/tasks (reads stay in data.router).
     backlog.router,
     sprints.router,
+    poker.router,
 ):
     api_router.include_router(_r)

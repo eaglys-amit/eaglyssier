@@ -2,6 +2,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { BoardView } from "./scrums/BoardView";
+import { PokerView } from "./scrums/PokerView";
 import { SCRUM_VIEWS, type ScrumView } from "./scrums/scrum-nav";
 import { useScrumParams } from "./scrums/useScrumParams";
 
@@ -35,6 +36,8 @@ export function ScrumsTab({ projectId }: { projectId: number }) {
 
       {view === "board" ? (
         <BoardView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
+      ) : view === "poker" ? (
+        <PokerView projectId={projectId} sprintId={sprintId} />
       ) : (
         <NotYet view={view} />
       )}

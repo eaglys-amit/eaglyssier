@@ -38,4 +38,8 @@ export const qk = {
   scaleSources: (id: number) => ["projects", id, "story-points", "sources"] as const,
   scaleViolations: (id: number) => ["projects", id, "story-points", "violations"] as const,
   memberSyncPreview: (id: number) => ["projects", id, "members", "sync-preview"] as const,
+  pokerSessions: (id: number) => ["projects", id, "poker"] as const,
+  // Outside the project subtree: it's polled by id every 2s and must not be
+  // swept by a project-wide invalidation mid-round.
+  pokerSession: (sessionId: number) => ["poker", sessionId] as const,
 };
