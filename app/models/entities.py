@@ -335,6 +335,14 @@ class Task(Base, TimestampMixin):
         Enum(StatusCategory), default=StatusCategory.todo
     )
     story_points: Mapped[float | None] = mapped_column(Float)
+    # Where story_points came from. NULL for connector-synced estimates.
+    #   ai     = proposed by an AI breakdown, not yet agreed by the team
+    #   poker  = agreed in a planning-poker round
+    #   manual = typed in by a person
+    # Poker uses this to offer "re-estimate the AI's proposals" as its own
+    # scope: without it, a proposed number is indistinguishable from a settled
+    # one and the room never gets to challenge the model.
+    estimate_source: Mapped[str | None] = mapped_column(String(16))
     worklog_seconds: Mapped[int] = mapped_column(Integer, default=0)  # working-hours source
     reopened_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at_src: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -577,6 +585,13 @@ class PokerSession(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="open", server_default="open"
     )  # open | closed
+    # Whoever started the session. Only they may reveal, so one early click
+    # can't turn the cards over while the room is still thinking. SET NULL so a
+    # deleted member doesn't leave a session nobody can ever reveal — it falls
+    # back to open reveal instead.
+    facilitator_member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL")
+    )
     # Deck snapshotted from StoryPointScale at creation, so editing the project
     # scale mid-session can't change the cards under the players.
     deck: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
@@ -586,6 +601,7 @@ class PokerSession(Base, TimestampMixin):
 
     project: Mapped["Project"] = relationship()
     sprint: Mapped["Sprint"] = relationship()
+    facilitator: Mapped["Member"] = relationship()
     rounds: Mapped[list["PokerRound"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )

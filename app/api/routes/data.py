@@ -94,6 +94,7 @@ def list_tasks(project_id: int, db: Session = Depends(get_db)):
         TaskOut.model_validate(t).model_copy(
             update={
                 "status_category": t.status_category.value,
+                "description_preview": tasks_svc.description_preview(t.description),
                 "assignee_name": _identity_name(t.assignee),
                 "assignee_member_id": t.assignee.member_id if t.assignee else None,
             }

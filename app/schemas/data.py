@@ -25,12 +25,19 @@ class TaskOut(ApiModel):
     # NULL for locally-created tasks; render app.services.tasks.task_label.
     external_key: str | None
     title: str
+    # A clipped first line of the description, for list rendering. Deliberately
+    # NOT called `description`: descriptions run to ~3k characters here, and a
+    # field that looks like the real thing would eventually get saved back over
+    # it. Fetch /tasks/{id} for the full text.
+    description_preview: str | None = None
     issue_type: str | None
     status: str | None
     status_category: str
     story_points: float | None
     sprint_id: int | None
     source: str = "sync"  # 'sync' | 'local'
+    # ai | poker | manual | None (connector-supplied)
+    estimate_source: str | None = None
     parent_id: int | None = None
     rank: int = 0
     priority: str | None = None

@@ -6,6 +6,8 @@ export type SyncRunStatus = "running" | "success" | "failed";
 export type ReportStatus = "pending" | "generating" | "ready" | "failed";
 /** Who owns a sprint/task row: a connector, or the Scrums tab. */
 export type EntitySource = "sync" | "local";
+/** Where a task's story points came from. null = a connector supplied them. */
+export type EstimateSource = "ai" | "poker" | "manual" | null;
 
 export interface ProjectListItem {
   id: number;
@@ -150,6 +152,11 @@ export interface Task {
   /** null for locally-created tasks — render taskLabel(t), not this. */
   external_key: string | null;
   title: string;
+  /**
+   * A clipped, whitespace-collapsed first line of the description, for list
+   * rows. Not the real description — fetch /tasks/{id} for that.
+   */
+  description_preview: string | null;
   issue_type: string | null;
   status: string | null;
   status_category: StatusCategory;
@@ -159,6 +166,8 @@ export interface Task {
   parent_id: number | null;
   rank: number;
   priority: string | null;
+  /** 'ai' means proposed by a breakdown and not yet agreed by the team. */
+  estimate_source: EstimateSource;
   assignee_name: string | null;
   assignee_member_id: number | null;
 }
@@ -756,6 +765,10 @@ export interface PokerRound {
   task_id: number;
   task_key: string | null;
   task_title: string;
+  /** The context needed to estimate — a title alone isn't enough. */
+  task_description: string | null;
+  task_acceptance_criteria: string | null;
+  task_issue_type: string | null;
   attempt: number;
   status: PokerRoundStatus;
   final_points: number | null;
@@ -765,12 +778,15 @@ export interface PokerRound {
   votes: PokerVote[];
   /** Null while voting. */
   stats: PokerStats | null;
+  /** What the AI had proposed. Withheld until reveal, so it can't anchor votes. */
+  proposed_points: number | null;
 }
 
 export interface PokerQueueItem {
   task_id: number;
   task_key: string | null;
   task_title: string;
+  task_description: string | null;
   story_points: number | null;
   round_status: PokerRoundStatus | null;
   attempts: number;
@@ -783,6 +799,9 @@ export interface PokerSession {
   sprint_name: string | null;
   name: string;
   status: "open" | "closed";
+  /** Whoever started the session — the only member who may reveal. */
+  facilitator_member_id: number | null;
+  facilitator_name: string | null;
   /** Snapshotted at creation, so a mid-session scale edit can't change the cards. */
   deck: number[];
   breakdown_points: number[];
@@ -825,7 +844,7 @@ export interface PokerApplyOut {
 
 // ------------------------------------------------------- reference documents
 
-export type ReferenceKind = "md" | "txt" | "html" | "pdf";
+export type ReferenceKind = "md" | "txt" | "html" | "pdf" | "pptx";
 
 export interface ReferenceFile {
   id: number;
@@ -969,4 +988,24 @@ export interface Velocity {
 export interface SnapshotOut {
   sprint_id: number;
   written: number;
+}
+
+export interface PokerCandidate {
+  task_id: number;
+  task_key: string | null;
+  title: string;
+  /** null = in the backlog. */
+  sprint_id: number | null;
+  sprint_name: string | null;
+  /** The number already on the task, when it's an unagreed AI proposal. */
+  proposed_points: number | null;
+}
+
+/** What a session would queue, split by where the work currently sits. */
+export interface PokerCandidates {
+  backlog: PokerCandidate[];
+  /** Unestimated but already in a sprint and still To Do. */
+  in_sprints: PokerCandidate[];
+  /** Have points, but only because an AI breakdown proposed them. */
+  proposed: PokerCandidate[];
 }

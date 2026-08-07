@@ -137,6 +137,13 @@ export function TaskCard({
           ) : null}
         </div>
 
+        {/* Enough context to tell two tasks apart without opening each one. */}
+        {task.description_preview ? (
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+            {task.description_preview}
+          </p>
+        ) : null}
+
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <span className="font-mono">{taskLabel(task)}</span>
           {taskCategoryBadge(task.status_category, task.status)}

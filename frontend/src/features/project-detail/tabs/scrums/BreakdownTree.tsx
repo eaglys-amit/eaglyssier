@@ -69,7 +69,10 @@ function BreakdownNodeRow({
   onEdit: (id: string, patch: Partial<DraftNode>) => void;
   onRemove: (id: string) => void;
 }) {
-  const [open, setOpen] = useState(depth === 0);
+  // Expanded by default at every depth. Collapsed branches don't render their
+  // rows, so their checkbox, estimate and delete controls simply don't exist —
+  // which made subtasks look undeletable.
+  const [open, setOpen] = useState(true);
   const isContainer = node.children.length > 0;
   // The same rule poker enforces: a break-it-down estimate on a childless node.
   const needsBreakdown =
@@ -154,10 +157,19 @@ function BreakdownNodeRow({
           variant="ghost"
           size="icon-sm"
           className="shrink-0 text-muted-foreground"
+          title={
+            isContainer
+              ? `Remove this item — its ${node.children.length} sub-item(s) move up a level`
+              : "Remove this item from the draft"
+          }
           onClick={() => onRemove(node.id)}
         >
           <Trash2 className="size-3.5" />
-          <span className="sr-only">Remove {node.title} from the draft</span>
+          <span className="sr-only">
+            {isContainer
+              ? `Remove ${node.title} from the draft, keeping its ${node.children.length} sub-item(s)`
+              : `Remove ${node.title} from the draft`}
+          </span>
         </Button>
       </div>
 

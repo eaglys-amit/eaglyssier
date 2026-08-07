@@ -9,10 +9,11 @@ values across. Hiding in the UI would be theatre: anyone can curl the endpoint.
 (The keys still serialize as null; the client decides whether to render a value
 from ``round.status``, never from the presence of the field.)
 
-**Anyone can reveal, and revealing is idempotent.** There is no auth, so there
-is no facilitator to gate it on; gating on the person who created the session
-would deadlock the room the moment they closed their tab. Two simultaneous
-reveals are therefore fine — the second is a no-op that returns the same round.
+**Only the facilitator reveals.** Whoever starts the session holds that
+control, so one early click can't turn the cards over while people are still
+thinking. It is advisory — the member id is self-declared, like the votes — and
+:func:`set_facilitator` exists precisely so a closed tab can't strand the room.
+Revealing stays idempotent: two clicks from the facilitator are one reveal.
 
 **Nothing auto-advances.** The ``voted / participants`` counter is advisory. An
 auto-reveal at "everyone voted" would fire in the face of someone who joined a
@@ -24,7 +25,7 @@ import statistics
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
@@ -34,11 +35,14 @@ from app.models import (
     PokerVote,
     ProjectMember,
     Sprint,
+    StatusCategory,
     Task,
 )
 from app.schemas.poker import (
     PokerApplyIn,
     PokerApplyOut,
+    PokerCandidateOut,
+    PokerCandidatesOut,
     PokerParticipantOut,
     PokerQueueItemOut,
     PokerRoundCreateIn,
@@ -86,11 +90,21 @@ def create_session(
         if sprint is None or sprint.project_id != project_id:
             raise HTTPException(404, "Sprint not found")
 
-    task_ids = data.task_ids or _unestimated_task_ids(db, project_id, data.sprint_id)
+    task_ids = data.task_ids or [
+        t.id
+        for t in candidate_tasks(
+            db,
+            project_id,
+            include_sprint_tasks=data.include_sprint_tasks,
+            include_proposed=data.include_proposed,
+        )
+    ]
     if not task_ids:
         raise HTTPException(
             409,
-            "Nothing to estimate — every task here already has story points.",
+            "Nothing in the backlog needs an estimate."
+            if not (data.include_sprint_tasks or data.include_proposed)
+            else "Nothing matches that scope — every task already has an agreed estimate.",
         )
     # Reject foreign ids up front rather than opening a session with a broken queue.
     valid = set(
@@ -107,6 +121,7 @@ def create_session(
         sprint_id=data.sprint_id,
         name=(data.name or "").strip() or _default_name(sprint),
         status="open",
+        facilitator_member_id=data.facilitator_member_id,
         deck=[float(p) for p in deck.points],
         breakdown_points=[float(p) for p in deck.needs_breakdown],
     )
@@ -126,23 +141,48 @@ def _default_name(sprint: Sprint | None) -> str:
     return f"{sprint.name} estimation" if sprint else "Backlog estimation"
 
 
-def _unestimated_task_ids(
-    db: Session, project_id: int, sprint_id: int | None
-) -> list[int]:
-    """Leaf tasks with no estimate, newest-ranked last.
+def candidate_tasks(
+    db: Session,
+    project_id: int,
+    *,
+    include_sprint_tasks: bool = False,
+    include_proposed: bool = False,
+) -> list[Task]:
+    """Unestimated work the room could put on the table, in board order.
 
-    Leaves only: a container's points roll up from its children, so putting an
-    epic on the table would ask the room to estimate the same work twice.
+    The backlog is the default and usually the whole answer: estimating is what
+    you do *before* planning, so the unplanned column is the natural queue.
+    Sweeping every sprint as well would drag a dozen in-flight tickets into a
+    refinement session nobody asked to re-litigate.
+
+    ``include_sprint_tasks`` adds work already sitting in a sprint but still
+    **To Do** — the carried-over tickets that never got a number. Anything in
+    progress or done is left alone: estimating it after the fact is noise.
+
+    ``include_proposed`` adds tasks that *do* have points but only because an AI
+    breakdown proposed them (``estimate_source == 'ai'``). Those look estimated
+    and would otherwise never reach the table, so the model's guess would stand
+    unchallenged. A poker round overwrites the number and marks it agreed, at
+    which point it stops matching this scope.
+
+    Leaves only, as everywhere: a container's points roll up from its children,
+    so putting an epic on the table would ask the room to estimate the same
+    work twice.
     """
-    stmt = select(Task).where(
-        Task.project_id == project_id, Task.story_points.is_(None)
+    # Either there is no estimate at all, or there is one the team never agreed.
+    estimate_state = Task.story_points.is_(None)
+    if include_proposed:
+        estimate_state = or_(estimate_state, Task.estimate_source == "ai")
+
+    placement = (
+        or_(Task.sprint_id.is_(None), Task.status_category == StatusCategory.todo)
+        if include_sprint_tasks
+        else Task.sprint_id.is_(None)
     )
-    if sprint_id is not None:
-        stmt = stmt.where(Task.sprint_id == sprint_id)
-    rows = db.execute(
-        tasks_svc.leaf_only(stmt).order_by(Task.rank, Task.id)
-    ).scalars().all()
-    return [t.id for t in rows]
+    stmt = select(Task).where(Task.project_id == project_id, estimate_state, placement)
+    return list(
+        db.execute(tasks_svc.leaf_only(stmt).order_by(Task.rank, Task.id)).scalars().all()
+    )
 
 
 def close_session(db: Session, session: PokerSession) -> PokerSession:
@@ -250,15 +290,43 @@ def cast_vote(db: Session, round_id: int, data: PokerVoteIn) -> PokerRound:
     return row
 
 
-def reveal_round(db: Session, round_id: int) -> PokerRound:
-    """Show every card. Idempotent — a second caller gets the same round back."""
+def reveal_round(db: Session, round_id: int, member_id: int | None = None) -> PokerRound:
+    """Show every card. Facilitator only; idempotent for them.
+
+    A session with no facilitator (created before the lock, or whose
+    facilitator was deleted) falls back to open reveal rather than becoming
+    permanently unrevealable.
+    """
     row = _round_of_session(db, round_id)
+    facilitator = row.session.facilitator_member_id
+    if facilitator is not None and member_id != facilitator:
+        name = row.session.facilitator.display_name if row.session.facilitator else "the facilitator"
+        raise HTTPException(
+            403,
+            f"Only {name} can reveal this round — they started the session. "
+            "They can hand over facilitation if they've dropped out.",
+        )
     if row.status == "voting":
         row.status = "revealed"
         row.revealed_at = _now()
         db.commit()
         db.refresh(row)
     return row
+
+
+def set_facilitator(db: Session, session: PokerSession, member_id: int) -> PokerSession:
+    """Hand facilitation to someone else.
+
+    The escape hatch for the reveal lock: without it, the facilitator closing
+    their tab would leave a room that can vote but never turn the cards over.
+    Deliberately not silent — the UI attributes the change.
+    """
+    if db.get(Member, member_id) is None:
+        raise HTTPException(404, "Member not found")
+    session.facilitator_member_id = member_id
+    db.commit()
+    db.refresh(session)
+    return session
 
 
 def revote(db: Session, round_id: int) -> PokerRound:
@@ -296,6 +364,9 @@ def apply_round(db: Session, round_id: int, data: PokerApplyIn) -> PokerApplyOut
         raise HTTPException(404, "Task not found")
 
     task.story_points = data.points
+    # The room has spoken: this is no longer a proposal, so it drops out of the
+    # "re-estimate AI proposals" scope.
+    task.estimate_source = "poker"
     task.updated_at_src = _now()
     row.status = "applied"
     row.final_points = data.points
@@ -374,6 +445,9 @@ def round_out(
         task_id=row.task_id,
         task_key=tasks_svc.task_label(row.task) if row.task else None,
         task_title=row.task.title if row.task else "",
+        task_description=row.task.description if row.task else None,
+        task_acceptance_criteria=row.task.acceptance_criteria if row.task else None,
+        task_issue_type=row.task.issue_type if row.task else None,
         attempt=row.attempt,
         status=row.status,
         final_points=row.final_points,
@@ -382,6 +456,11 @@ def round_out(
         applied_at=row.applied_at,
         votes=votes,
         stats=_stats(row.votes, deck or []) if revealed else None,
+        proposed_points=(
+            row.task.story_points
+            if revealed and row.task is not None and row.task.estimate_source == "ai"
+            else None
+        ),
     )
 
 
@@ -394,6 +473,10 @@ def session_out(db: Session, session: PokerSession) -> PokerSessionOut:
         sprint_name=session.sprint.name if session.sprint else None,
         name=session.name,
         status=session.status,
+        facilitator_member_id=session.facilitator_member_id,
+        facilitator_name=(
+            session.facilitator.display_name if session.facilitator else None
+        ),
         deck=session.deck or [],
         breakdown_points=session.breakdown_points or [],
         created_at=session.created_at,
@@ -475,6 +558,7 @@ def build_detail(
                 task_id=r.task_id,
                 task_key=tasks_svc.task_label(r.task) if r.task else None,
                 task_title=r.task.title if r.task else "",
+                task_description=r.task.description if r.task else None,
                 story_points=r.task.story_points if r.task else None,
                 round_status=r.status,
                 attempts=r.attempt,
@@ -483,3 +567,38 @@ def build_detail(
         ],
     )
     return detail
+
+
+def build_candidates(db: Session, project_id: int) -> PokerCandidatesOut:
+    """Split the estimable work into backlog vs already-in-a-sprint.
+
+    The UI shows both counts up front: a session that silently queues thirty
+    tickets is one nobody finishes.
+    """
+    rows = candidate_tasks(
+        db, project_id, include_sprint_tasks=True, include_proposed=True
+    )
+    names = dict(
+        db.execute(
+            select(Sprint.id, Sprint.name).where(Sprint.project_id == project_id)
+        ).all()
+    )
+    out = PokerCandidatesOut()
+    for task in rows:
+        item = PokerCandidateOut(
+            task_id=task.id,
+            task_key=tasks_svc.task_label(task),
+            title=task.title,
+            sprint_id=task.sprint_id,
+            sprint_name=names.get(task.sprint_id) if task.sprint_id else None,
+            proposed_points=task.story_points,
+        )
+        # An AI proposal is its own bucket wherever it sits: the question there
+        # is "do we agree with the model", not "does this need a number".
+        if task.estimate_source == "ai" and task.story_points is not None:
+            out.proposed.append(item)
+        elif task.sprint_id is None:
+            out.backlog.append(item)
+        else:
+            out.in_sprints.append(item)
+    return out

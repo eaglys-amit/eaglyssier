@@ -42,6 +42,7 @@ export const qk = {
   // Outside the project subtree: it's polled by id every 2s and must not be
   // swept by a project-wide invalidation mid-round.
   pokerSession: (sessionId: number) => ["poker", sessionId] as const,
+  pokerCandidates: (id: number) => ["projects", id, "poker", "candidates"] as const,
   referenceFiles: (id: number) => ["projects", id, "references"] as const,
   breakdowns: (id: number) => ["projects", id, "breakdowns"] as const,
   // Outside the project subtree: polled by id while generating, and must not be

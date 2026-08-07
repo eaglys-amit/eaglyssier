@@ -5,16 +5,26 @@ takes well under a second, so making it a background job would cost the UI a
 whole polling cycle for a step that is normally instant — the ``extract_status``
 columns exist anyway so a failure is visible and retryable.
 
-Nothing here does OCR. A scanned PDF extracts to nothing, which is reported as
-``char_count == 0`` rather than as an error, because the upload did succeed and
-the file is still downloadable — it just can't inform a prompt.
+Nothing here does OCR. A scanned PDF, or a deck that is entirely images,
+extracts to nothing — reported as ``char_count == 0`` rather than as an error,
+because the upload did succeed and the file is still downloadable; it just
+can't inform a prompt.
+
+Every format is read with the standard library or a zero-dependency package.
+python-pptx would have pulled in lxml and xlsxwriter to read text out of a zip
+of XML, and beautifulsoup would have done the same for HTML — the consumer here
+is an LLM prompt, which tolerates imperfect reading order far better than a
+renderer would.
 """
 from __future__ import annotations
 
 import io
 import logging
+import posixpath
 import re
+import zipfile
 from html.parser import HTMLParser
+from xml.etree import ElementTree
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -36,6 +46,7 @@ _KINDS = {
     "html": "html",
     "htm": "html",
     "pdf": "pdf",
+    "pptx": "pptx",
 }
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -109,10 +120,110 @@ def _from_pdf(data: bytes) -> str:
     return "\n\n".join(p for p in pages if p.strip())
 
 
+# --- PowerPoint -------------------------------------------------------------
+#
+# A .pptx is a zip of OOXML. Slide text lives in <a:t> runs inside <a:p>
+# paragraphs, and speaker notes hang off a *relationship* rather than a
+# matching filename — notesSlide3.xml is not necessarily slide 3's.
+
+_DRAWING_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+_RELS_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+_NOTES_REL = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide"
+)
+_SLIDE_RE = re.compile(r"ppt/slides/slide(\d+)\.xml$")
+
+
+def _para_text(node) -> str:
+    """A paragraph's text: its runs concatenated, since formatting splits them."""
+    return "".join(run.text or "" for run in node.iter(f"{_DRAWING_NS}t")).strip()
+
+
+def _slide_lines(root) -> list[str]:
+    """One slide's text in document order, with table cells kept as rows.
+
+    Document order matters: emitting every table first would put a slide's title
+    after its table, which is not how anyone reads the slide.
+    """
+    in_table = {
+        id(para)
+        for table in root.iter(f"{_DRAWING_NS}tbl")
+        for para in table.iter(f"{_DRAWING_NS}p")
+    }
+    lines: list[str] = []
+    for node in root.iter():
+        if node.tag == f"{_DRAWING_NS}tbl":
+            for row in node.iter(f"{_DRAWING_NS}tr"):
+                cells = [
+                    " ".join(
+                        filter(
+                            None,
+                            (_para_text(p) for p in cell.iter(f"{_DRAWING_NS}p")),
+                        )
+                    )
+                    for cell in row.iter(f"{_DRAWING_NS}tc")
+                ]
+                if any(cells):
+                    lines.append(" | ".join(cells))
+        elif node.tag == f"{_DRAWING_NS}p" and id(node) not in in_table:
+            text = _para_text(node)
+            if text:
+                lines.append(text)
+    return lines
+
+
+def _from_pptx(data: bytes) -> str:
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise ReferenceError(415, "That .pptx is not a readable PowerPoint file.") from None
+
+    blocks: list[str] = []
+    with archive as z:
+        names = set(z.namelist())
+        slides = sorted(
+            (n for n in names if _SLIDE_RE.fullmatch(n)),
+            key=lambda n: int(_SLIDE_RE.fullmatch(n).group(1)),
+        )
+        for index, name in enumerate(slides, start=1):
+            try:
+                lines = _slide_lines(ElementTree.fromstring(z.read(name)))
+            except ElementTree.ParseError as exc:
+                # One malformed slide shouldn't cost the whole deck.
+                log.warning("pptx slide %s unreadable: %s", name, exc)
+                continue
+
+            notes: list[str] = []
+            rels = f"ppt/slides/_rels/{posixpath.basename(name)}.rels"
+            if rels in names:
+                try:
+                    for rel in ElementTree.fromstring(z.read(rels)).iter(
+                        f"{_RELS_NS}Relationship"
+                    ):
+                        if rel.get("Type") != _NOTES_REL:
+                            continue
+                        target = posixpath.normpath(
+                            posixpath.join("ppt/slides", rel.get("Target", ""))
+                        )
+                        if target in names:
+                            notes = _slide_lines(ElementTree.fromstring(z.read(target)))
+                except ElementTree.ParseError:
+                    pass  # notes are a bonus, never worth failing the slide over
+
+            if lines or notes:
+                block = f"## Slide {index}\n" + "\n".join(lines)
+                if notes:
+                    block += "\n[speaker notes] " + " ".join(notes)
+                blocks.append(block)
+    return "\n\n".join(blocks)
+
+
 def extract(kind: str, data: bytes) -> str:
     """Plain text for one document. Raises only on a genuinely broken file."""
     if kind == "pdf":
         return _from_pdf(data)
+    if kind == "pptx":
+        return _from_pptx(data)
     if kind == "html":
         return _from_html(data)
     return data.decode("utf-8", errors="replace")
@@ -142,10 +253,13 @@ def store_reference(
     if len(data) > settings.reference_max_bytes:
         limit = settings.reference_max_bytes // 1_000_000
         raise ReferenceError(413, f"{filename} is larger than the {limit} MB limit.")
-    # Content sniff on top of the extension: a .pdf that isn't one would blow up
-    # in the extractor with a far less useful message.
+    # Content sniff on top of the extension: a file that isn't what its name
+    # claims would otherwise blow up in the extractor with a far less useful
+    # message. "PK" is the zip magic every OOXML file starts with.
     if kind == "pdf" and not data.startswith(b"%PDF-"):
         raise ReferenceError(415, f"{filename} is not a valid PDF.")
+    if kind == "pptx" and not data.startswith(b"PK"):
+        raise ReferenceError(415, f"{filename} is not a valid PowerPoint file.")
 
     row = ReferenceFile(
         project_id=project_id,

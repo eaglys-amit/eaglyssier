@@ -35,6 +35,26 @@ def task_label(task: Task) -> str:
     return task.external_key or f"#{task.id}"
 
 
+# Enough to tell two tasks apart in a list without wrapping to a paragraph.
+_PREVIEW_CHARS = 240
+
+
+def description_preview(text: str | None) -> str | None:
+    """One clipped line of a description, for list rows.
+
+    Collapses whitespace so a multi-line body doesn't turn a card into a wall,
+    and clips on a word boundary so it doesn't end mid-word.
+    """
+    if not text:
+        return None
+    flat = " ".join(text.split())
+    if len(flat) <= _PREVIEW_CHARS:
+        return flat
+    clipped = flat[:_PREVIEW_CHARS]
+    cut = clipped.rfind(" ")
+    return f"{clipped[:cut] if cut > 40 else clipped}…"
+
+
 def leaf_only(stmt: Select) -> Select:
     """Narrow a Task select to leaves — tasks with no children.
 

@@ -17,8 +17,37 @@ from app.schemas.common import ApiModel
 class PokerSessionCreateIn(BaseModel):
     name: str | None = None
     sprint_id: int | None = None
-    # Tasks to queue. Empty = every unestimated leaf task in the sprint.
+    # Explicit queue. Empty = derive it from the scope below.
     task_ids: list[int] = []
+    # Scope when task_ids is empty. The backlog alone by default — estimating
+    # happens before planning. Set true to also pull in unestimated tasks that
+    # are already in a sprint but still To Do (the carried-over ones).
+    include_sprint_tasks: bool = False
+    # Also re-estimate tasks whose points an AI breakdown proposed but the team
+    # never agreed. They look estimated, so nothing else would surface them.
+    include_proposed: bool = False
+    # Whoever starts the session facilitates it: only they may reveal.
+    facilitator_member_id: int | None = None
+
+
+class PokerCandidateOut(BaseModel):
+    task_id: int
+    task_key: str | None
+    title: str
+    # None = in the backlog.
+    sprint_id: int | None
+    sprint_name: str | None
+    # The number already on the task, when it's an unagreed AI proposal.
+    proposed_points: float | None = None
+
+
+class PokerCandidatesOut(BaseModel):
+    """What a session would queue, so the count is visible before committing."""
+    backlog: list[PokerCandidateOut] = []
+    # Unestimated but already in a sprint and still To Do.
+    in_sprints: list[PokerCandidateOut] = []
+    # Have points, but only because an AI breakdown proposed them.
+    proposed: list[PokerCandidateOut] = []
 
 
 class PokerVoteIn(BaseModel):
@@ -30,6 +59,15 @@ class PokerVoteIn(BaseModel):
 
 class PokerRoundCreateIn(BaseModel):
     task_id: int
+
+
+class PokerRevealIn(BaseModel):
+    """Who is revealing. Checked against the session's facilitator."""
+    member_id: int | None = None
+
+
+class PokerFacilitatorIn(BaseModel):
+    member_id: int
 
 
 class PokerApplyIn(BaseModel):
@@ -75,6 +113,11 @@ class PokerRoundOut(ApiModel):
     task_id: int
     task_key: str | None = None
     task_title: str = ""
+    # The context an engineer needs to put a number on it. A title alone is not
+    # something anyone can estimate against.
+    task_description: str | None = None
+    task_acceptance_criteria: str | None = None
+    task_issue_type: str | None = None
     attempt: int
     status: str  # voting | revealed | applied | skipped
     final_points: float | None
@@ -83,6 +126,10 @@ class PokerRoundOut(ApiModel):
     applied_at: datetime | None
     votes: list[PokerVoteOut] = []
     stats: PokerStatsOut | None = None
+    # What an AI breakdown had proposed, if anything. Withheld until the reveal
+    # for the same reason the votes are: seeing the model's number first would
+    # anchor the room, which is precisely what hidden voting exists to prevent.
+    proposed_points: float | None = None
 
 
 class PokerQueueItemOut(BaseModel):
@@ -90,6 +137,9 @@ class PokerQueueItemOut(BaseModel):
     task_id: int
     task_key: str | None
     task_title: str
+    # One line of context per row, so the queue is scannable without opening
+    # each task.
+    task_description: str | None = None
     story_points: float | None
     # The most recent round for this task, if any.
     round_status: str | None = None
@@ -103,6 +153,8 @@ class PokerSessionOut(ApiModel):
     sprint_name: str | None = None
     name: str
     status: str  # open | closed
+    facilitator_member_id: int | None = None
+    facilitator_name: str | None = None
     deck: list[float] = []
     breakdown_points: list[float] = []
     created_at: datetime | None = None

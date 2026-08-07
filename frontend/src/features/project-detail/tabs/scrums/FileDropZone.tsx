@@ -63,8 +63,8 @@ export function FileDropZone({
       </div>
       <div className="text-sm font-medium">Drop reference documents here</div>
       <div className="max-w-sm text-xs text-muted-foreground">
-        Markdown, plain text, HTML or PDF, up to {MAX_BYTES / 1_000_000} MB each. Their text
-        becomes the context for AI task breakdown.
+        Markdown, plain text, HTML, PDF or PowerPoint, up to {MAX_BYTES / 1_000_000} MB each.
+        Their text becomes the context for AI task breakdown.
       </div>
       <Button
         variant="outline"

@@ -81,9 +81,22 @@ export function usePokerSession(
   });
 
   const reveal = useMutation({
-    mutationFn: (roundId: number) => api.post(`/poker/rounds/${roundId}/reveal`),
+    // The server checks this against the session's facilitator and 403s anyone
+    // else; the UI hides the button, but the rule lives on the server.
+    mutationFn: (roundId: number) =>
+      api.post(`/poker/rounds/${roundId}/reveal`, { member_id: meId }),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
     onError: (err: ApiError) => toast.error(err.detail || "Could not reveal the votes"),
+  });
+
+  /** The escape hatch: without it, a facilitator's closed tab strands the room. */
+  const takeOver = useMutation({
+    mutationFn: () => api.post(`/poker/${sessionId}/facilitator`, { member_id: meId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: key });
+      toast.success("You're facilitating now");
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not take over"),
   });
 
   const revote = useMutation({
@@ -123,6 +136,7 @@ export function usePokerSession(
     isPending: session.isPending,
     vote,
     reveal,
+    takeOver,
     revote,
     apply,
     close,

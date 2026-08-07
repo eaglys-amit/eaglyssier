@@ -86,13 +86,27 @@ export function toggleAccept(
   );
 }
 
-/** Delete a node and its subtree from the draft entirely. */
+/**
+ * Remove one node, promoting its children into its place.
+ *
+ * Deliberately not a cascade. Deleting an epic used to take its whole subtree
+ * with it — one click could silently destroy eleven drafted tasks with no undo,
+ * and the draft only exists in the browser until it's accepted. Promoting
+ * matches how the board's own delete behaves (children are promoted unless
+ * cascade is asked for), and unchecking is still there for "exclude this branch
+ * entirely", which is reversible.
+ */
 export function removeNode(nodes: DraftNode[], id: string): DraftNode[] {
-  return withRollups(
-    nodes
-      .filter((node) => node.id !== id)
-      .map((node) => ({ ...node, children: removeNode(node.children, id) })),
-  );
+  const out: DraftNode[] = [];
+  for (const node of nodes) {
+    if (node.id === id) {
+      // Take its place rather than vanishing with it.
+      out.push(...node.children);
+      continue;
+    }
+    out.push({ ...node, children: removeNode(node.children, id) });
+  }
+  return withRollups(out);
 }
 
 export function countAccepted(nodes: DraftNode[]): { tasks: number; points: number } {

@@ -14,6 +14,9 @@ from app.models import PokerSession, Project
 from app.schemas.poker import (
     PokerApplyIn,
     PokerApplyOut,
+    PokerCandidatesOut,
+    PokerFacilitatorIn,
+    PokerRevealIn,
     PokerRoundCreateIn,
     PokerRoundOut,
     PokerSessionCreateIn,
@@ -52,6 +55,17 @@ def create_poker_session(
     return poker_svc.session_out(db, session)
 
 
+@router.get("/projects/{project_id}/poker/candidates", response_model=PokerCandidatesOut)
+def poker_candidates(project_id: int, db: Session = Depends(get_db)):
+    """Unestimated work split into backlog vs already-in-a-sprint To Do.
+
+    Lets the UI show what a session would queue, and how much more the
+    include-sprints option would add, before anyone commits to a session.
+    """
+    get_or_404(db, Project, project_id)
+    return poker_svc.build_candidates(db, project_id)
+
+
 @router.get("/poker/{session_id}", response_model=PokerSessionDetail)
 def poker_session_detail(
     session_id: int, me: int | None = None, db: Session = Depends(get_db)
@@ -64,6 +78,19 @@ def poker_session_detail(
     what that browser already chose.
     """
     return poker_svc.build_detail(db, _session(db, session_id), for_member_id=me)
+
+
+@router.post("/poker/{session_id}/facilitator", response_model=PokerSessionOut)
+def hand_over_facilitation(
+    session_id: int, body: PokerFacilitatorIn, db: Session = Depends(get_db)
+):
+    """Hand facilitation to someone else.
+
+    Open to anyone on purpose: it is the escape hatch for the reveal lock. If
+    the facilitator closes their tab, the room must still be able to finish.
+    """
+    session = poker_svc.set_facilitator(db, _session(db, session_id), body.member_id)
+    return poker_svc.session_out(db, session)
 
 
 @router.post("/poker/{session_id}/close", response_model=PokerSessionOut)
@@ -100,9 +127,15 @@ def cast_poker_vote(round_id: int, body: PokerVoteIn, db: Session = Depends(get_
 
 
 @router.post("/poker/rounds/{round_id}/reveal", response_model=PokerRoundOut)
-def reveal_poker_round(round_id: int, db: Session = Depends(get_db)):
-    """Show every card. Idempotent, and anyone in the room may call it."""
-    row = poker_svc.reveal_round(db, round_id)
+def reveal_poker_round(
+    round_id: int, body: PokerRevealIn | None = None, db: Session = Depends(get_db)
+):
+    """Show every card. **Facilitator only** — whoever started the session.
+
+    403 for anyone else, so one early click can't turn the cards over while the
+    room is still thinking. Idempotent for the facilitator.
+    """
+    row = poker_svc.reveal_round(db, round_id, body.member_id if body else None)
     deck = [float(p) for p in (row.session.deck or [])]
     return poker_svc.round_out(row, revealed=True, deck=deck)
 

@@ -170,12 +170,16 @@ export function BreakdownPanel({
   }
 
   const running = current?.status === "running";
+  // An emptied draft is treated as no draft, so the inputs come back rather
+  // than stranding the user on a blank panel whose only escape is another
+  // model call.
+  const hasDraft = Boolean(draft?.length);
   const totals = draft ? countAccepted(draft) : { tasks: 0, points: 0 };
 
   return (
     <div className="space-y-4">
       {/* ---- inputs -------------------------------------------------- */}
-      {!draft && !running ? (
+      {!hasDraft && !running ? (
         <div className="space-y-3 rounded-lg border p-3">
           <div>
             <h3 className="text-sm font-semibold tracking-tight">Draft tasks from documents</h3>
@@ -253,7 +257,7 @@ export function BreakdownPanel({
       ) : null}
 
       {/* ---- the draft ----------------------------------------------- */}
-      {draft && !running ? (
+      {hasDraft && draft ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">

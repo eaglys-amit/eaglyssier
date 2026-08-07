@@ -368,6 +368,9 @@ def accept_breakdown(
             issue_type=node.get("issue_type"),
             priority=node.get("priority"),
             story_points=node.get("story_points"),
+            # Proposed, not agreed. Poker offers these as their own scope so the
+            # room can challenge the model rather than inherit its guess.
+            estimate_source="ai" if node.get("story_points") is not None else None,
             status="To Do",
             status_category=StatusCategory.todo,
             rank=tasks_svc.next_rank(db, breakdown.project_id),

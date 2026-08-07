@@ -5,11 +5,20 @@
 export const MAX_BYTES = 10_000_000;
 
 /** The `accept` attribute for the file input. */
-export const ACCEPT = ".md,.markdown,.txt,.text,.html,.htm,.pdf";
+export const ACCEPT = ".md,.markdown,.txt,.text,.html,.htm,.pdf,.pptx";
 
 // Extension, not MIME: browsers report .md as text/markdown, text/plain, or
 // nothing at all depending on the OS, so the type is only a hint.
-const EXTENSIONS = new Set(["md", "markdown", "txt", "text", "html", "htm", "pdf"]);
+const EXTENSIONS = new Set([
+  "md",
+  "markdown",
+  "txt",
+  "text",
+  "html",
+  "htm",
+  "pdf",
+  "pptx",
+]);
 
 export function validateFiles(files: File[]): {
   accepted: File[];
@@ -23,7 +32,7 @@ export function validateFiles(files: File[]): {
       ? file.name.split(".").pop()!.toLowerCase()
       : "";
     if (!EXTENSIONS.has(ext)) {
-      rejected.push({ file, reason: "only Markdown, text, HTML and PDF are supported" });
+      rejected.push({ file, reason: "only Markdown, text, HTML, PDF and PowerPoint are supported" });
     } else if (file.size === 0) {
       rejected.push({ file, reason: "the file is empty" });
     } else if (file.size > MAX_BYTES) {

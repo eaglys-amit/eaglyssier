@@ -120,6 +120,7 @@ def create_task(db: Session, project_id: int, data: TaskCreateIn) -> Task:
         issue_type=data.issue_type,
         status=data.status,
         story_points=data.story_points,
+        estimate_source="manual" if data.story_points is not None else None,
         priority=data.priority,
         sprint_id=data.sprint_id,
         parent_id=data.parent_id,
@@ -156,6 +157,9 @@ def patch_task(db: Session, task: Task, data: TaskPatchIn) -> Task:
         _apply_category(task, _category(fields.pop("status_category")))
     if "title" in fields and fields["title"] is not None:
         fields["title"] = fields["title"].strip()
+    if "story_points" in fields:
+        # Editing the number by hand settles it, so it stops being a proposal.
+        task.estimate_source = "manual" if fields["story_points"] is not None else None
 
     for key, value in fields.items():
         setattr(task, key, value)
@@ -291,6 +295,7 @@ def task_out(task: Task) -> TaskOut:
     return TaskOut.model_validate(task).model_copy(
         update={
             "status_category": task.status_category.value,
+            "description_preview": tasks_svc.description_preview(task.description),
             "assignee_name": _identity_name(task.assignee),
             "assignee_member_id": task.assignee.member_id if task.assignee else None,
         }

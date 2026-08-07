@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, RefreshCw } from "lucide-react";
+import { GitBranch, Link2, RefreshCw } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -91,6 +91,29 @@ export function TaskSheet() {
                 {task.issue_type ? <Badge variant="outline">{task.issue_type}</Badge> : null}
                 {task.sprint ? <Badge variant="secondary">{task.sprint}</Badge> : null}
                 {task.assignee ? <Badge variant="secondary">{task.assignee}</Badge> : null}
+                {task.source === "local" ? <Badge variant="outline">Local</Badge> : null}
+              </div>
+
+              {/* Where this sits in a breakdown. Without it, a task created from
+                  an AI draft loses every trace of the epic it came from. */}
+              <div className="flex flex-wrap items-center gap-2">
+                {task.parent_key ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                    onClick={() =>
+                      task.parent_id != null &&
+                      setParams((p) => {
+                        const next = new URLSearchParams(p);
+                        next.set("task", String(task.parent_id));
+                        return next;
+                      })
+                    }
+                  >
+                    <GitBranch className="size-3.5" />
+                    Part of <span className="font-mono">{task.parent_key}</span>
+                  </button>
+                ) : null}
               </div>
               {task.description ? (
                 <div>

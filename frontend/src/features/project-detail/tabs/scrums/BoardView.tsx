@@ -1,7 +1,7 @@
 import { DndContext, DragOverlay, closestCorners } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Inbox, LayoutList, ListPlus, Pencil, Play, Plus, SquareCheck, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -20,12 +21,14 @@ import {
 } from "@/components/ui/select";
 import { api, ApiError } from "@/lib/api";
 import { formatPoints } from "@/lib/format";
+import { qk } from "@/lib/query-keys";
 import type {
   BacklogSprintBucket,
   Sprint,
   SprintCompleteOut,
   SprintCreateIn,
   Task,
+  TaskNode,
 } from "@/types/api";
 
 import { SectionPanel } from "../data/SectionPanel";
@@ -34,6 +37,7 @@ import { DropColumn } from "./DropColumn";
 import { SprintDialog } from "./SprintDialog";
 import { TaskCard } from "./TaskCard";
 import { TaskDialog } from "./TaskDialog";
+import { TaskTreeView } from "./TaskTreeView";
 import { useBoard } from "./useBoard";
 import { BACKLOG_DROPPABLE, sprintDroppable, useBoardDnd } from "./useBoardDnd";
 
@@ -71,6 +75,15 @@ export function BoardView({
   const [sprintDialog, setSprintDialog] = useState<{ sprint: BacklogSprintBucket | null } | null>(
     null,
   );
+  // Flat is the planning surface (drag, rank, move-to-sprint act on it); tree
+  // is where a breakdown's epic still reads as an epic once its tasks exist.
+  const [layout, setLayout] = useState<"flat" | "tree">("flat");
+
+  const { data: tree } = useQuery({
+    queryKey: qk.taskTree(projectId),
+    queryFn: () => api.get<TaskNode[]>(`/projects/${projectId}/task-tree`),
+    enabled: layout === "tree",
+  });
 
   const sprints = board?.sprints ?? [];
   // Fall back to the first sprint so the right pane is never empty just because
@@ -173,6 +186,32 @@ export function BoardView({
     moveTask.mutate({ taskId: task.id, body: { sprint_id: task.sprint_id, after_task_id: anchor } });
   };
 
+  const treeFor = (sprintId: number | null) =>
+    (tree ?? []).filter((n) => (n.sprint_id ?? null) === sprintId);
+
+  const editFromTree = (node: TaskNode) =>
+    setTaskDialog({ task: node as unknown as Task, parent: null });
+
+  const renderPane = (
+    list: Task[],
+    sprintId: number | null,
+    droppableId: string,
+    emptyNode: React.ReactNode,
+  ) => {
+    if (layout === "tree") {
+      const roots = treeFor(sprintId);
+      if (!roots.length) return emptyNode;
+      return (
+        <TaskTreeView
+          nodes={roots}
+          onEdit={editFromTree}
+          onDelete={(node, cascade) => deleteTask.mutate({ taskId: node.id, cascade })}
+        />
+      );
+    }
+    return renderList(list, droppableId, emptyNode);
+  };
+
   const renderList = (list: Task[], droppableId: string, emptyNode: React.ReactNode) => (
     // The column is a drop target in its own right, so a task can be dropped
     // into an empty list or below the last card.
@@ -233,17 +272,27 @@ export function BoardView({
                 </span>
               }
               actions={
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => setTaskDialog({ task: null, parent: null })}
-                >
-                  <Plus className="size-3.5" /> Task
-                </Button>
+                <div className="flex items-center gap-1">
+                  {/* Scopes both panes — the two halves must always agree. */}
+                  <Tabs value={layout} onValueChange={(v) => setLayout(v as "flat" | "tree")}>
+                    <TabsList>
+                      <TabsTrigger value="flat">Flat</TabsTrigger>
+                      <TabsTrigger value="tree">Tree</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => setTaskDialog({ task: null, parent: null })}
+                  >
+                    <Plus className="size-3.5" /> Task
+                  </Button>
+                </div>
               }
             >
-              {renderList(
+              {renderPane(
                 board.backlog,
+                null,
                 BACKLOG_DROPPABLE,
                 <EmptyState
                   icon={Inbox}
@@ -339,8 +388,9 @@ export function BoardView({
               }
             >
               {active ? (
-                renderList(
+                renderPane(
                   active.tasks,
+                  active.sprint_id,
                   sprintDroppable(active.sprint_id),
                   <EmptyState
                     icon={LayoutList}
