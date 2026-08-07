@@ -23,6 +23,7 @@ import { EvaluationTab } from "@/features/project-detail/tabs/EvaluationTab";
 import { GanttTab } from "@/features/project-detail/tabs/GanttTab";
 import { KpiTab } from "@/features/project-detail/tabs/KpiTab";
 import { ReportsTab } from "@/features/project-detail/tabs/ReportsTab";
+import { ScrumsTab } from "@/features/project-detail/tabs/ScrumsTab";
 import { TerminalTab } from "@/features/project-detail/tabs/TerminalTab";
 
 // Analysis views only. Project setup (provider, integrations, members,
@@ -30,6 +31,8 @@ import { TerminalTab } from "@/features/project-detail/tabs/TerminalTab";
 // PROJECT_SETTINGS.
 const TABS = [
   { key: "data", label: "Data" },
+  // The write surface over the same sprints/tasks Data reads, so it sits next to it.
+  { key: "scrums", label: "Scrums" },
   { key: "gantt", label: "Gantt Chart" },
   { key: "reports", label: "Reports" },
   { key: "deliverables", label: "Deliverables" },
@@ -145,6 +148,7 @@ export function ProjectDetailLayout() {
               />
             </div>
             {tab === "data" && <DataTab projectId={projectId} />}
+            {tab === "scrums" && <ScrumsTab projectId={projectId} />}
             {tab === "gantt" && <GanttTab projectId={projectId} />}
             {tab === "reports" && <ReportsTab projectId={projectId} />}
             {tab === "deliverables" && <DeliverablesTab projectId={projectId} project={project} />}

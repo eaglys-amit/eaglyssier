@@ -87,7 +87,12 @@ def task_conditions(scope: AnalysisScope) -> list:
     conds = []
     if scope.sprint_ids:
         conds.append(Task.sprint_id.in_(scope.sprint_ids))
-    activity = func.coalesce(Task.resolved_at_src, Task.updated_at_src, Task.created_at_src)
+    # created_at is the last resort: locally-created tasks may carry no
+    # connector timestamps at all, and without it a date-bounded scope would
+    # silently drop them from every KPI and evaluation.
+    activity = func.coalesce(
+        Task.resolved_at_src, Task.updated_at_src, Task.created_at_src, Task.created_at
+    )
     if scope.start is not None:
         conds.append(activity >= scope.start)
     if scope.end is not None:

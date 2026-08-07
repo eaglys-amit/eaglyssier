@@ -4,6 +4,8 @@ export type StatusCategory = "todo" | "in_progress" | "done";
 export type JobStatus = "none" | "idle" | "queued" | "running" | "done" | "ready" | "failed";
 export type SyncRunStatus = "running" | "success" | "failed";
 export type ReportStatus = "pending" | "generating" | "ready" | "failed";
+/** Who owns a sprint/task row: a connector, or the Scrums tab. */
+export type EntitySource = "sync" | "local";
 
 export interface ProjectListItem {
   id: number;
@@ -136,19 +138,27 @@ export interface Sprint {
   start_date: string | null;
   end_date: string | null;
   goal: string | null;
+  source: EntitySource;
+  /** Points frozen when the sprint was started — the burndown's baseline. */
+  committed_points: number | null;
   task_count: number;
   working_days?: number | null;
 }
 
 export interface Task {
   id: number;
-  external_key: string;
+  /** null for locally-created tasks — render taskLabel(t), not this. */
+  external_key: string | null;
   title: string;
   issue_type: string | null;
   status: string | null;
   status_category: StatusCategory;
   story_points: number | null;
   sprint_id: number | null;
+  source: EntitySource;
+  parent_id: number | null;
+  rank: number;
+  priority: string | null;
   assignee_name: string | null;
   assignee_member_id: number | null;
 }
@@ -163,13 +173,21 @@ export interface TaskCommit {
 
 export interface TaskDetail {
   id: number;
-  key: string;
+  /** taskLabel(): the Jira key, or '#<id>' when local. */
+  key: string | null;
   title: string;
   description: string | null;
+  acceptance_criteria: string | null;
   issue_type: string | null;
   status: string | null;
   status_category: StatusCategory;
   story_points: number | null;
+  priority: string | null;
+  source: EntitySource;
+  parent_id: number | null;
+  /** taskLabel() of the parent, for the "part of …" line. */
+  parent_key: string | null;
+  assignee_member_id: number | null;
   hours: number;
   assignee: string | null;
   sprint: string | null;
@@ -281,6 +299,7 @@ export interface GanttItem {
   kind: "jira" | "commit";
   task_id: number | null;
   key: string | null;
+  parent_id: number | null;
   title: string;
   status_category: StatusCategory | null;
   start: string;
@@ -521,4 +540,101 @@ export interface SprintCapacity {
 export interface SprintCapacityIn {
   working_days: number | null;
   members: { member_id: number; focus_factor: number }[];
+}
+
+// ---------------------------------------------------------------- Scrums
+
+/** POST /projects/:id/tasks */
+export interface TaskCreateIn {
+  title: string;
+  description?: string | null;
+  acceptance_criteria?: string | null;
+  issue_type?: string | null;
+  status?: string | null;
+  status_category?: StatusCategory;
+  story_points?: number | null;
+  priority?: string | null;
+  sprint_id?: number | null;
+  parent_id?: number | null;
+  assignee_member_id?: number | null;
+}
+
+/** PATCH /tasks/:id — omitted keys are left alone, null clears the field. */
+export type TaskPatchIn = Partial<TaskCreateIn>;
+
+/**
+ * POST /tasks/:id/rank — positional, never a rank value. `after_task_id: null`
+ * means "first in the target list"; the server assigns the actual rank.
+ */
+export interface RankMoveIn {
+  sprint_id: number | null;
+  after_task_id: number | null;
+}
+
+export interface BulkMoveIn {
+  task_ids: number[];
+  sprint_id: number | null;
+}
+
+export interface TaskNode extends Task {
+  children: TaskNode[];
+  /** Points summed over leaf descendants; own story_points for a leaf. */
+  rollup_points: number;
+}
+
+export interface BacklogSprintBucket {
+  sprint_id: number;
+  name: string;
+  state: string | null;
+  source: EntitySource;
+  goal: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  tasks: Task[];
+  committed_points: number;
+  completed_points: number;
+  /** null when no member has a focus factor set for the sprint. */
+  capacity_points: number | null;
+}
+
+export interface BacklogBoard {
+  backlog: Task[];
+  sprints: BacklogSprintBucket[];
+  backlog_points: number;
+}
+
+export interface SprintCreateIn {
+  name: string;
+  goal?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  state?: string | null;
+  working_days?: number | null;
+}
+
+export type SprintPatchIn = Partial<SprintCreateIn>;
+
+export interface SprintCompleteIn {
+  /** Where unfinished tasks go. null = the backlog. */
+  move_incomplete_to: number | null;
+}
+
+export interface SprintCompleteOut {
+  sprint_id: number;
+  completed_tasks: number;
+  completed_points: number;
+  moved_tasks: number;
+  moved_to_sprint_id: number | null;
+}
+
+export interface SprintCommitment {
+  sprint_id: number;
+  name: string;
+  committed_points: number;
+  completed_points: number;
+  /** null = no capacity set, which is "unknown", not "no room". */
+  capacity_points: number | null;
+  working_days: number;
+  unestimated_tasks: number;
+  over_capacity: boolean;
 }

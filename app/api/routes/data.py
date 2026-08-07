@@ -33,6 +33,7 @@ from app.schemas.data import (
     TaskOut,
 )
 from app.schemas.jobs import AnalyzeAllOut
+from app.services import tasks as tasks_svc
 from app.services.commit_link import (
     attach_commit,
     candidate_tasks_for_commit,
@@ -61,11 +62,15 @@ def list_sprints(project_id: int, db: Session = Depends(get_db)):
     sprints = db.execute(
         select(Sprint).where(Sprint.project_id == project_id).order_by(desc(Sprint.start_date))
     ).scalars().all()
+    # Leaves only, so a breakdown tree counts as its real work items rather
+    # than work items plus the containers holding them.
     counts = dict(
         db.execute(
-            select(Task.sprint_id, func.count(Task.id))
-            .where(Task.project_id == project_id)
-            .group_by(Task.sprint_id)
+            tasks_svc.leaf_only(
+                select(Task.sprint_id, func.count(Task.id)).where(
+                    Task.project_id == project_id
+                )
+            ).group_by(Task.sprint_id)
         ).all()
     )
     return [
@@ -80,7 +85,9 @@ def list_tasks(project_id: int, db: Session = Depends(get_db)):
     tasks = db.execute(
         select(Task)
         .where(Task.project_id == project_id)
-        .order_by(Task.external_key)
+        # rank is the board's manual ordering and is seeded from external_key
+        # for synced rows, so this stays stable for Jira-only projects.
+        .order_by(Task.rank, Task.id)
         .options(selectinload(Task.assignee))
     ).scalars().all()
     return [
@@ -169,7 +176,7 @@ def commit_detail(commit_id: int, db: Session = Depends(get_db)):
         candidates=[
             CommitCandidateTask(
                 id=t.id,
-                key=t.external_key,
+                key=tasks_svc.task_label(t),
                 title=t.title,
                 status_category=t.status_category.value,
                 assignee_name=_identity_name(t.assignee),
@@ -229,13 +236,19 @@ def task_detail(task_id: int, db: Session = Depends(get_db)):
     ).scalars().all()
     return TaskDetail(
         id=t.id,
-        key=t.external_key,
+        key=tasks_svc.task_label(t),
         title=t.title,
         description=t.description,
+        acceptance_criteria=t.acceptance_criteria,
         issue_type=t.issue_type,
         status=t.status,
         status_category=t.status_category.value,
         story_points=t.story_points,
+        priority=t.priority,
+        source=t.source,
+        parent_id=t.parent_id,
+        parent_key=tasks_svc.task_label(t.parent) if t.parent else None,
+        assignee_member_id=t.assignee.member_id if t.assignee else None,
         hours=round((t.worklog_seconds or 0) / 3600.0, 1),
         assignee=t.assignee.display_name if t.assignee else None,
         sprint=sprint.name if sprint else None,
@@ -254,30 +267,55 @@ def task_detail(task_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/sprints/{sprint_id}", status_code=204)
 def delete_sprint(sprint_id: int, db: Session = Depends(get_db)):
-    """Manually remove a synced sprint and its tasks (a re-sync recreates them)."""
+    """Remove a sprint and its *synced* tasks (a re-sync recreates those).
+
+    Locally-created tasks are moved to the backlog instead of deleted — no
+    re-sync can rebuild hand-planned work, so destroying it here would be
+    silent, unrecoverable data loss.
+    """
     sprint = db.get(Sprint, sprint_id)
     if sprint:
-        db.query(Task).filter(Task.sprint_id == sprint.id).delete(synchronize_session=False)
+        db.query(Task).filter(
+            Task.sprint_id == sprint.id, Task.source == "sync"
+        ).delete(synchronize_session=False)
+        db.query(Task).filter(Task.sprint_id == sprint.id).update(
+            {Task.sprint_id: None}, synchronize_session=False
+        )
         db.delete(sprint)
         db.commit()
 
 
 @router.delete("/projects/{project_id}/sprints", status_code=204)
 def delete_all_sprints(project_id: int, db: Session = Depends(get_db)):
-    """Remove all of the project's sprints and their tasks. Backlog tasks
-    (no sprint) are kept; a Jira re-sync recreates everything."""
+    """Remove all of the project's sprints and their synced tasks.
+
+    Backlog tasks (no sprint) are kept and locally-created tasks fall back to
+    the backlog; a Jira re-sync recreates the synced side. Local sprints go
+    too — the caller asked for all of them — but their tasks survive.
+    """
     sprint_ids = select(Sprint.id).where(Sprint.project_id == project_id)
-    db.query(Task).filter(Task.sprint_id.in_(sprint_ids)).delete(synchronize_session=False)
+    db.query(Task).filter(
+        Task.sprint_id.in_(sprint_ids), Task.source == "sync"
+    ).delete(synchronize_session=False)
+    db.query(Task).filter(Task.sprint_id.in_(sprint_ids)).update(
+        {Task.sprint_id: None}, synchronize_session=False
+    )
     db.query(Sprint).filter(Sprint.project_id == project_id).delete(synchronize_session=False)
     db.commit()
 
 
 @router.delete("/projects/{project_id}/backlog", status_code=204)
 def delete_backlog_tasks(project_id: int, db: Session = Depends(get_db)):
-    """Remove the project's backlog tasks (those without a sprint); a Jira
-    re-sync recreates them."""
+    """Remove the project's *synced* backlog tasks; a Jira re-sync recreates them.
+
+    Locally-created tasks are never touched: this endpoint is a "clear what
+    Jira gave us" button, and without the source filter it would wipe the
+    entire hand-built and AI-generated backlog behind a 204.
+    """
     db.query(Task).filter(
-        Task.project_id == project_id, Task.sprint_id.is_(None)
+        Task.project_id == project_id,
+        Task.sprint_id.is_(None),
+        Task.source == "sync",
     ).delete(synchronize_session=False)
     db.commit()
 

@@ -24,6 +24,7 @@ from app.models import (
     Task,
 )
 from app.schemas.capacity import SprintCapacityMemberOut, SprintCapacityOut
+from app.services import tasks as tasks_svc
 
 
 def business_days(start: date | None, end: date | None) -> int:
@@ -51,8 +52,12 @@ def _allocated(focus_factor: float, working_days: int) -> float:
 
 
 def completed_by_sprint_member(db: Session, project_id: int) -> dict[tuple[int, int], float]:
-    """{(sprint_id, member_id): completed story points} for done, sprinted tasks."""
-    rows = db.execute(
+    """{(sprint_id, member_id): completed story points} for done, sprinted tasks.
+
+    Leaves only — a container and its subtasks both carry points, so summing
+    the whole tree would inflate completion and wrongly trip over_capacity.
+    """
+    stmt = (
         select(
             Task.sprint_id,
             MemberIdentity.member_id,
@@ -65,7 +70,9 @@ def completed_by_sprint_member(db: Session, project_id: int) -> dict[tuple[int, 
             Task.sprint_id.is_not(None),
             MemberIdentity.member_id.is_not(None),
         )
-        .group_by(Task.sprint_id, MemberIdentity.member_id)
+    )
+    rows = db.execute(
+        tasks_svc.leaf_only(stmt).group_by(Task.sprint_id, MemberIdentity.member_id)
     ).all()
     return {(sid, mid): float(total) for sid, mid, total in rows}
 

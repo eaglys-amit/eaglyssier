@@ -29,7 +29,7 @@ import {
 } from "@/features/project-detail/tabs/data/IntegrationSync";
 import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
 import { api, ApiError } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, taskLabel } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type { AnalysisScope, Sprint, Task } from "@/types/api";
 
@@ -68,7 +68,7 @@ function TaskTable({ tasks }: { tasks: Task[] }) {
               setParams(params);
             }}
           >
-            <TableCell className="font-mono text-xs">{t.external_key}</TableCell>
+            <TableCell className="font-mono text-xs">{taskLabel(t)}</TableCell>
             <TableCell className="max-w-md truncate">{t.title}</TableCell>
             <TableCell>{taskCategoryBadge(t.status_category, t.status)}</TableCell>
             <TableCell className="truncate text-muted-foreground">
@@ -164,7 +164,7 @@ export function SprintsSection({
               </Button>
             }
             title="Delete all sprints?"
-            description="Removes every sprint and its tasks (backlog tasks are kept). A Jira re-sync recreates them."
+            description="Removes every sprint. Synced tasks go with them and a Jira re-sync recreates those; tasks created in Scrums are kept and fall back to the backlog."
             onConfirm={() => deleteAll.mutate()}
           />
         ) : null
@@ -200,6 +200,11 @@ export function SprintsSection({
                         label={s.state}
                       />
                     ) : null}
+                    {s.source === "local" ? (
+                      <Badge variant="outline" className="shrink-0 text-[10px]">
+                        Local
+                      </Badge>
+                    ) : null}
                     <span className="hidden text-xs text-muted-foreground sm:inline">
                       {formatDate(s.start_date)} → {formatDate(s.end_date)}
                     </span>
@@ -219,7 +224,7 @@ export function SprintsSection({
                       </Button>
                     }
                     title={`Delete sprint “${s.name}”?`}
-                    description="Removes the sprint and its tasks; a re-sync recreates them."
+                    description="Removes the sprint. Its synced tasks go too and a re-sync recreates them; tasks created in Scrums fall back to the backlog."
                     onConfirm={() => deleteSprint.mutate(s.id)}
                   />
                 </div>
@@ -262,7 +267,7 @@ export function SprintsSection({
                     </Button>
                   }
                   title="Delete all backlog tasks?"
-                  description="Removes every task without a sprint; a Jira re-sync recreates them."
+                  description="Removes the synced tasks that have no sprint; a Jira re-sync recreates them. Tasks created in Scrums are kept."
                   onConfirm={() => deleteBacklog.mutate()}
                 />
               </div>

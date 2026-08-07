@@ -29,4 +29,9 @@ export const qk = {
   claudeStatus: ["provider", "claude", "status"] as const,
   storyPoints: (id: number) => ["projects", id, "story-points"] as const,
   capacity: (id: number) => ["projects", id, "capacity"] as const,
+  // Scrums. Under ["projects", id] so a sync invalidation sweeps them too.
+  board: (id: number) => ["projects", id, "scrums", "board"] as const,
+  taskTree: (id: number) => ["projects", id, "scrums", "task-tree"] as const,
+  commitment: (id: number, sprintId: number) =>
+    ["projects", id, "scrums", "commitment", sprintId] as const,
 };

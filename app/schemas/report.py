@@ -7,7 +7,9 @@ from pydantic import BaseModel, Field
 
 
 class TaskItem(BaseModel):
-    key: str
+    # task_label(): the Jira key, or '#<id>' for locally-created tasks.
+    # Optional so one local task can't fail report generation for the project.
+    key: str | None = None
     title: str
     issue_type: str | None = None
     status: str | None = None

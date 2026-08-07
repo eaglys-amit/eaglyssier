@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Commit, GitRepo, MemberIdentity, Sprint, Task
 from app.services import analyzers
+from app.services import tasks as tasks_svc
 from app.services.commit_analysis import analyze_commit
 
 _MAX_CANDIDATES = 40
@@ -110,15 +111,19 @@ def _sprint_for(db: Session, project_id: int, when: datetime) -> Sprint | None:
 
 
 def _member_tasks(db: Session, project_id: int, member_id: int) -> list[Task]:
-    """All tasks in the project assigned to a given member."""
-    return list(
-        db.execute(
-            select(Task)
-            .join(MemberIdentity, Task.assignee_identity_id == MemberIdentity.id)
-            .where(Task.project_id == project_id, MemberIdentity.member_id == member_id)
-            .order_by(Task.external_key)
-        ).scalars().all()
+    """Leaf tasks in the project assigned to a given member.
+
+    Leaves only: a container (epic) is a poor attribution target and would eat
+    into the _MAX_CANDIDATES budget that the real work needs.
+    """
+    stmt = (
+        select(Task)
+        .join(MemberIdentity, Task.assignee_identity_id == MemberIdentity.id)
+        .where(Task.project_id == project_id, MemberIdentity.member_id == member_id)
+        # NULLs sort last so local tasks trail the keyed ones deterministically.
+        .order_by(Task.external_key.asc().nullslast(), Task.id)
     )
+    return list(db.execute(tasks_svc.leaf_only(stmt)).scalars().all())
 
 
 def _window_contains(task: Task, when: datetime) -> bool:
@@ -206,9 +211,11 @@ def link_commit(db: Session, commit_id: int) -> None:
         if summary and authored is not None and member_id is not None:
             candidates = _auto_candidates(db, project_id, member_id, authored)
             if candidates:
-                by_key = {t.external_key.lower(): t for t in candidates}
+                # task_label(), not external_key: local tasks have no Jira key,
+                # and reading the column directly would raise on .lower().
+                by_key = {tasks_svc.task_label(t).lower(): t for t in candidates}
                 lines = "\n".join(
-                    f"- [{t.external_key}] {t.title}"
+                    f"- [{tasks_svc.task_label(t)}] {t.title}"
                     + (f" — {(t.description or '').strip()[:_MAX_DESC]}" if t.description else "")
                     for t in candidates[:_MAX_CANDIDATES]
                 )

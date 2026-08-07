@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.models import Deliverable, GitRepo, Project, Task
 from app.services import analyzers
+from app.services import tasks as tasks_svc
 
 _MAX_TASKS = 300
 
@@ -63,13 +64,15 @@ def _tasks_text(db: Session, project_id: int) -> str:
         select(Task)
         .where(Task.project_id == project_id)
         .options(selectinload(Task.sprint))
-        .order_by(Task.external_key)
+        # NULLs sort last so local tasks trail the keyed ones deterministically.
+        .order_by(Task.external_key.asc().nullslast(), Task.id)
     ).scalars().all()
     lines: list[str] = []
     for t in rows[:_MAX_TASKS]:
         cat = t.status_category.value if t.status_category else "todo"
         sp = t.story_points if t.story_points is not None else 0
-        lines.append(f"- {cat} · {sp:g}sp · {t.external_key} · {(t.title or '')[:120]}")
+        label = tasks_svc.task_label(t)
+        lines.append(f"- {cat} · {sp:g}sp · {label} · {(t.title or '')[:120]}")
     return "\n".join(lines) or "(no tasks)"
 
 

@@ -26,3 +26,17 @@ export function formatNumber(n: number | null | undefined): string {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString();
 }
+
+/** Story points for display: one decimal, dropping a trailing .0. */
+export function formatPoints(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  return Number(n.toFixed(1)).toString();
+}
+
+/**
+ * Display handle for a task. Mirrors app.services.tasks.task_label: locally
+ * created tasks have no Jira key, so they show as '#<id>'.
+ */
+export function taskLabel(task: { id: number; external_key: string | null }): string {
+  return task.external_key || `#${task.id}`;
+}

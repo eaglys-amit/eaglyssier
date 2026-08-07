@@ -18,6 +18,7 @@ from datetime import timedelta
 
 from app.models import Commit, GitRepo, MemberIdentity, Sprint, Task
 from app.schemas.data import GanttCommit, GanttItem, GanttOut, GanttRow, GanttSprint
+from app.services import tasks as tasks_svc
 
 
 def _aware(value: datetime | date | None) -> datetime | None:
@@ -108,13 +109,23 @@ def build_gantt(db: Session, project_id: int) -> GanttOut:
         else:
             panel.append(c)
 
+    # A container and its subtasks would draw the same work twice in one
+    # swimlane, so only leaves get bars. GanttItem.parent_id still carries the
+    # link for a future nested rendering.
+    container_ids = {t.parent_id for t in tasks if t.parent_id is not None}
+
     items_by_member: dict[int | None, list[GanttItem]] = defaultdict(list)
     for t in tasks:
+        if t.id in container_ids:
+            continue
         sprint = sprints.get(t.sprint_id)
         start = (
             _aware(t.started_at_src)
             or _aware(t.created_at_src)
             or (_aware(sprint.start_date) if sprint else None)
+            # Last resort for a local task with no sprint and no connector
+            # timestamps: the row's own created_at, which is always populated.
+            or _aware(t.created_at)
         )
         end = (
             _aware(t.resolved_at_src)
@@ -132,7 +143,8 @@ def build_gantt(db: Session, project_id: int) -> GanttOut:
                 id=f"task-{t.id}",
                 kind="jira",
                 task_id=t.id,
-                key=t.external_key,
+                key=tasks_svc.task_label(t),
+                parent_id=t.parent_id,
                 title=t.title,
                 status_category=t.status_category.value,
                 start=start,

@@ -28,6 +28,7 @@ from app.models import (
     SyncStatus,
     Task,
 )
+from app.services import tasks as tasks_svc
 from app.services.identity import resolve_identity
 
 log = logging.getLogger("sync")
@@ -246,13 +247,23 @@ def _sync_issue_tracker(
 
 
 def _upsert_sprint(db: Session, project_id: int, dto: SprintDTO) -> Sprint:
+    # source == 'sync' is load-bearing: without it a locally-created sprint
+    # that happens to carry a matching external_id would be hijacked and have
+    # its name, state, dates and goal overwritten by the connector.
     sprint = db.execute(
         select(Sprint).where(
-            Sprint.project_id == project_id, Sprint.external_id == dto.external_id
+            Sprint.project_id == project_id,
+            Sprint.external_id == dto.external_id,
+            Sprint.source == "sync",
         )
     ).scalar_one_or_none()
     if sprint is None:
-        sprint = Sprint(project_id=project_id, external_id=dto.external_id, name=dto.name)
+        sprint = Sprint(
+            project_id=project_id,
+            external_id=dto.external_id,
+            name=dto.name,
+            source="sync",
+        )
         db.add(sprint)
     sprint.name = dto.name
     sprint.state = dto.state
@@ -268,13 +279,27 @@ def _upsert_task(
     db: Session, integration: Integration, dto: TaskDTO, sprint_by_ext: dict[str, Sprint]
 ) -> Task:
     project_id = integration.project_id
+    # As in _upsert_sprint, but the stakes are higher here: the update below
+    # reassigns sprint_id and story_points, so without the source guard a
+    # colliding local task would be yanked out of the sprint a user planned it
+    # into and have its estimate overwritten.
     task = db.execute(
         select(Task).where(
-            Task.project_id == project_id, Task.external_key == dto.external_key
+            Task.project_id == project_id,
+            Task.external_key == dto.external_key,
+            Task.source == "sync",
         )
     ).scalar_one_or_none()
     if task is None:
-        task = Task(project_id=project_id, external_key=dto.external_key, title=dto.title)
+        task = Task(
+            project_id=project_id,
+            external_key=dto.external_key,
+            title=dto.title,
+            source="sync",
+            # Land new tasks at the bottom of the backlog rather than colliding
+            # at rank 0. Only on create — a re-sync must not reshuffle the board.
+            rank=tasks_svc.next_rank(db, project_id),
+        )
         db.add(task)
 
     assignee = resolve_identity(db, project_id, integration.type, dto.assignee)

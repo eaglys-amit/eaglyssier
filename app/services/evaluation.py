@@ -27,6 +27,7 @@ from app.models import (
     Task,
 )
 from app.services import analyzers
+from app.services import tasks as tasks_svc
 from app.services.evaluation_prompts import (
     AXES,
     AXIS_KEYS,
@@ -116,11 +117,15 @@ def _gather_task_samples(
     """
     if not identity_ids:
         return []
+    # Leaves only: containers would eat into the 40-row budget the real work
+    # needs, and skew the generated Key Results toward epic-level phrasing.
     tasks = db.execute(
-        select(Task)
-        .where(Task.project_id == project_id)
-        .where(Task.assignee_identity_id.in_(identity_ids))
-        .where(*task_conditions(scope))
+        tasks_svc.leaf_only(
+            select(Task)
+            .where(Task.project_id == project_id)
+            .where(Task.assignee_identity_id.in_(identity_ids))
+            .where(*task_conditions(scope))
+        )
         .order_by(Task.created_at_src.desc().nullslast())
         .limit(40)
     ).scalars().all()
@@ -144,19 +149,22 @@ def _gather_done_task_samples(
     if not identity_ids:
         return []
     tasks = db.execute(
-        select(Task)
-        .where(Task.project_id == project_id)
-        .where(Task.assignee_identity_id.in_(identity_ids))
-        .where(Task.status_category == StatusCategory.done)
-        .where(*task_conditions(scope))
+        tasks_svc.leaf_only(
+            select(Task)
+            .where(Task.project_id == project_id)
+            .where(Task.assignee_identity_id.in_(identity_ids))
+            .where(Task.status_category == StatusCategory.done)
+            .where(*task_conditions(scope))
+        )
         .order_by(Task.resolved_at_src.desc().nullslast())
         .limit(40)
     ).scalars().all()
     samples = []
     for t in tasks:
         resolved = t.resolved_at_src.date().isoformat() if t.resolved_at_src else "?"
+        label = tasks_svc.task_label(t)
         samples.append(
-            f"- {t.external_key} · {(t.story_points or 0):g}sp · {resolved} · {(t.title or '')[:120]}"
+            f"- {label} · {(t.story_points or 0):g}sp · {resolved} · {(t.title or '')[:120]}"
         )
     return samples
 

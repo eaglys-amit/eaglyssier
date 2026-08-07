@@ -9,7 +9,7 @@ import statistics
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -37,6 +37,7 @@ from app.schemas.report import (
     TaskItem,
     TypeBreakdownRow,
 )
+from app.services import tasks as tasks_svc
 
 
 def _hours(seconds: int | None) -> float:
@@ -119,7 +120,7 @@ def build_report_context(
                 mr.tasks_todo += 1
             mr.tasks.append(
                 TaskItem(
-                    key=t.external_key,
+                    key=tasks_svc.task_label(t),
                     title=t.title,
                     issue_type=t.issue_type,
                     status=t.status,
@@ -310,7 +311,14 @@ def _parse_date_str(v) -> date | None:
 
 
 def _resolve_scope(db: Session, project_id: int, scope: dict) -> SimpleNamespace:
-    """Turn a scope dict into a task set, sprint set, git window, and labels."""
+    """Turn a scope dict into a task set, sprint set, git window, and labels.
+
+    Every branch returns **leaf tasks only**. A parent (epic) and its subtasks
+    both carry story points, so including containers would double-count in the
+    summary rollup, the per-sprint velocity in _project_breakdowns, and the
+    flow-metric samples — and would also inflate `tasks_without_points`, since
+    a container legitimately has none. Filtering once here fixes all four.
+    """
     ns = SimpleNamespace(
         tasks=[], sprints=[], single_sprint=None, is_single_sprint=False,
         window=(None, None), title="Project Closing Review", scope_label=None,
@@ -331,7 +339,11 @@ def _resolve_scope(db: Session, project_id: int, scope: dict) -> SimpleNamespace
         ns.sprints = sprints
         ns.tasks = list(
             db.execute(
-                select(Task).where(Task.project_id == project_id, Task.sprint_id.in_(sprint_ids))
+                tasks_svc.leaf_only(
+                    select(Task).where(
+                        Task.project_id == project_id, Task.sprint_id.in_(sprint_ids)
+                    )
+                )
             ).scalars()
         )
         starts = [s.start_date for s in sprints if s.start_date]
@@ -349,13 +361,18 @@ def _resolve_scope(db: Session, project_id: int, scope: dict) -> SimpleNamespace
     elif start or end:
         lo = start or date.min
         hi = end or date.max
+        # Locally-created tasks have no connector timestamps, so fall back
+        # through created_at_src to the row's own created_at — keying on
+        # updated_at_src alone would drop every local task from period reports.
+        activity = func.coalesce(Task.updated_at_src, Task.created_at_src, Task.created_at)
         ns.tasks = list(
             db.execute(
-                select(Task).where(
-                    Task.project_id == project_id,
-                    Task.updated_at_src.is_not(None),
-                    Task.updated_at_src >= _as_dt(lo),
-                    Task.updated_at_src <= _as_dt(hi, end_of_day=True),
+                tasks_svc.leaf_only(
+                    select(Task).where(
+                        Task.project_id == project_id,
+                        activity >= _as_dt(lo),
+                        activity <= _as_dt(hi, end_of_day=True),
+                    )
                 )
             ).scalars()
         )
@@ -370,7 +387,9 @@ def _resolve_scope(db: Session, project_id: int, scope: dict) -> SimpleNamespace
 
     else:  # whole project
         ns.tasks = list(
-            db.execute(select(Task).where(Task.project_id == project_id)).scalars()
+            db.execute(
+                tasks_svc.leaf_only(select(Task).where(Task.project_id == project_id))
+            ).scalars()
         )
         ns.sprints = db.execute(
             select(Sprint).where(Sprint.project_id == project_id).order_by(Sprint.start_date)

@@ -15,18 +15,25 @@ class SprintOut(ApiModel):
     start_date: date | None
     end_date: date | None
     goal: str | None
+    source: str = "sync"  # 'sync' (connector-owned) | 'local' (Scrums tab)
+    committed_points: float | None = None
     task_count: int = 0
 
 
 class TaskOut(ApiModel):
     id: int
-    external_key: str
+    # NULL for locally-created tasks; render app.services.tasks.task_label.
+    external_key: str | None
     title: str
     issue_type: str | None
     status: str | None
     status_category: str
     story_points: float | None
     sprint_id: int | None
+    source: str = "sync"  # 'sync' | 'local'
+    parent_id: int | None = None
+    rank: int = 0
+    priority: str | None = None
     assignee_name: str | None = None
     assignee_member_id: int | None = None
 
@@ -42,13 +49,21 @@ class TaskCommit(BaseModel):
 
 class TaskDetail(BaseModel):
     id: int
-    key: str
+    # Display handle from task_label() — the Jira key, or '#<id>' when local.
+    # Optional so a caller passing the raw column can't 500 the endpoint.
+    key: str | None
     title: str
     description: str | None
+    acceptance_criteria: str | None = None
     issue_type: str | None
     status: str | None
     status_category: str
     story_points: float | None
+    priority: str | None = None
+    source: str = "sync"
+    parent_id: int | None = None
+    parent_key: str | None = None
+    assignee_member_id: int | None = None
     hours: float
     assignee: str | None
     sprint: str | None
@@ -100,7 +115,8 @@ class GanttItem(BaseModel):
     id: str  # "task-<id>"; unique within the payload
     kind: str  # "jira"
     task_id: int | None  # DB Task id (drives the TaskSheet link)
-    key: str | None  # Jira external_key
+    key: str | None  # task_label(): Jira key, or '#<id>' when local
+    parent_id: int | None = None  # breakdown parent, so the UI can nest later
     title: str
     status_category: str | None
     start: datetime
@@ -146,7 +162,7 @@ class CommitLinkOut(BaseModel):
 class CommitCandidateTask(BaseModel):
     """A task the user can manually attach a commit to (any of the member's tasks)."""
     id: int
-    key: str
+    key: str | None  # task_label(): Jira key, or '#<id>' when local
     title: str
     status_category: str
     assignee_name: str | None

@@ -23,15 +23,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api, ApiError } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatPoints } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import { StoryPointScaleSection } from "@/features/project-detail/tabs/capacity/StoryPointScaleSection";
 import type { SprintCapacity, SprintCapacityIn } from "@/types/api";
-
-/** Round to 1 decimal, dropping a trailing .0 for display. */
-function fmt(n: number): string {
-  return Number(n.toFixed(1)).toString();
-}
 
 function SprintCapacityCard({
   sprint,
@@ -81,7 +76,7 @@ function SprintCapacityCard({
           </span>
         </CollapsibleTrigger>
         <Badge variant="secondary" className="font-mono tabular-nums">
-          Team {fmt(sprint.team_completed)}/{fmt(sprint.team_capacity)} pts
+          Team {formatPoints(sprint.team_completed)}/{formatPoints(sprint.team_capacity)} pts
         </Badge>
       </div>
       <CollapsibleContent>
@@ -136,13 +131,13 @@ function SprintCapacityCard({
                       />
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {fmt(allocated)}
+                      {formatPoints(allocated)}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {fmt(m.completed_points)}
+                      {formatPoints(m.completed_points)}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {delta > 0 ? `+${fmt(delta)}` : fmt(delta)}
+                      {delta > 0 ? `+${formatPoints(delta)}` : formatPoints(delta)}
                     </TableCell>
                     <TableCell className="text-right">
                       {allocated <= 0 ? (

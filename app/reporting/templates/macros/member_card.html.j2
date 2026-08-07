@@ -30,7 +30,7 @@
     <tbody>
     {% for t in m.tasks %}
       <tr>
-        <td><strong>{{ t.key }}</strong> — {{ t.title }}</td>
+        <td><strong>{{ t.key or '—' }}</strong> — {{ t.title }}</td>
         <td>{{ t.issue_type or '—' }}</td>
         <td><span class="pill {{ t.status_category }}">{{ t.status or t.status_category|replace('_',' ') }}</span></td>
         <td class="num">{{ t.story_points if t.story_points is not none else '—' }}</td>

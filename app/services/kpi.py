@@ -21,6 +21,7 @@ from app.models import (
     Task,
 )
 from app.services import analyzers
+from app.services import tasks as tasks_svc
 from app.services.capacity import allocated_points_for_scope
 from app.services.scope import (
     EMPTY_SCOPE,
@@ -115,11 +116,16 @@ def _compute_metrics(
                 elif c.message:
                     commit_samples.append(f"- {c.message.splitlines()[0][:120]}")
 
+    # Leaves only: these totals are fed to the LLM as "source of truth — do not
+    # contradict these", so a double-counted tree becomes a doubled narrative
+    # in a performance assessment.
     tasks = db.execute(
-        select(Task)
-        .where(Task.project_id == project_id)
-        .where(Task.assignee_identity_id.in_(identity_ids))
-        .where(*task_conditions(scope))
+        tasks_svc.leaf_only(
+            select(Task)
+            .where(Task.project_id == project_id)
+            .where(Task.assignee_identity_id.in_(identity_ids))
+            .where(*task_conditions(scope))
+        )
     ).scalars().all()
     for t in tasks:
         metrics["tasks_total"] += 1

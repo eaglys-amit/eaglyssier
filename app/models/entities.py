@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -237,7 +238,17 @@ class Sprint(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
-    external_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # NULL for locally-created sprints. Postgres treats NULLs as distinct in a
+    # UNIQUE constraint, so any number of local sprints coexist and the
+    # constraint above keeps deduplicating synced ones.
+    external_id: Mapped[str | None] = mapped_column(String(64))
+    # 'sync'  = owned by a connector; _upsert_sprint may overwrite it.
+    # 'local' = created in the Scrums tab; sync must never touch it.
+    # The Python default is 'local' so an insert that forgets to set it can
+    # never be clobbered by a sync; server_default backfills existing rows.
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="local", server_default="sync"
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     state: Mapped[str | None] = mapped_column(String(32))  # active/closed/future
     start_date: Mapped[date | None] = mapped_column(Date)
@@ -248,6 +259,10 @@ class Sprint(Base, TimestampMixin):
     # app.services.capacity). NULL = fall back to business days between
     # start_date/end_date.
     working_days: Mapped[int | None] = mapped_column(Integer)
+    # Story points committed when the sprint started, stamped by
+    # POST /sprints/{id}/start. NULL = derive the burndown baseline from the
+    # first snapshot instead.
+    committed_points: Mapped[float | None] = mapped_column(Float)
 
     project: Mapped["Project"] = relationship(back_populates="sprints")
     tasks: Mapped[list["Task"]] = relationship(back_populates="sprint")
@@ -282,6 +297,8 @@ class Task(Base, TimestampMixin):
     __tablename__ = "tasks"
     __table_args__ = (
         UniqueConstraint("project_id", "external_key", name="uq_task_project_key"),
+        Index("ix_task_parent_id", "parent_id"),
+        Index("ix_task_project_sprint_rank", "project_id", "sprint_id", "rank"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -290,7 +307,23 @@ class Task(Base, TimestampMixin):
     assignee_identity_id: Mapped[int | None] = mapped_column(
         ForeignKey("member_identities.id", ondelete="SET NULL")
     )
-    external_key: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. ABC-123
+    # NULL for locally-created tasks — see the note on Sprint.external_id.
+    external_key: Mapped[str | None] = mapped_column(String(64))  # e.g. ABC-123
+    # 'sync' | 'local'. See Sprint.source; the same rules apply, and
+    # app.services.tasks.sync_scoped is the shared guard.
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="local", server_default="sync"
+    )
+    # Breakdown tree parent (epic -> task -> subtask). SET NULL rather than
+    # CASCADE: deleting a container promotes its children to top level instead
+    # of silently destroying work, matching sprint_id/assignee_identity_id.
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    # Sparse manual ordering for the backlog board (step 1000, renumbered on
+    # collision). Ranking is per project; filtering by sprint_id and then
+    # ordering by rank also gives the correct within-sprint order.
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    priority: Mapped[str | None] = mapped_column(String(16))  # highest|high|medium|low|lowest
+    acceptance_criteria: Mapped[str | None] = mapped_column(Text)
     issue_type: Mapped[str | None] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -309,6 +342,10 @@ class Task(Base, TimestampMixin):
     project: Mapped["Project"] = relationship(back_populates="tasks")
     sprint: Mapped["Sprint"] = relationship(back_populates="tasks")
     assignee: Mapped["MemberIdentity"] = relationship()
+    parent: Mapped["Task | None"] = relationship(
+        back_populates="children", remote_side="Task.id"
+    )
+    children: Mapped[list["Task"]] = relationship(back_populates="parent")
 
 
 class GitRepo(Base, TimestampMixin):

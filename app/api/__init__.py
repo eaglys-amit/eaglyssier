@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     analysis,
+    backlog,
     capacity,
     data,
     deliverables,
@@ -18,6 +19,7 @@ from app.api.routes import (
     reports,
     scope,
     settings,
+    sprints,
     sync,
 )
 
@@ -38,5 +40,8 @@ for _r in (
     reports.router,
     provider.router,
     settings.router,
+    # Scrums: the write side of sprints/tasks (reads stay in data.router).
+    backlog.router,
+    sprints.router,
 ):
     api_router.include_router(_r)
