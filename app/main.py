@@ -15,7 +15,7 @@ from app import scheduler
 from app.api import api_router
 from app.config import settings
 from app.db import SessionLocal
-from app.models import EvaluationSheet, SyncRun, SyncStatus
+from app.models import Commit, EvaluationSheet, SyncRun, SyncStatus
 from app.storage import rustfs
 from app.web.routes import provider_ws, report_artifacts, terminal
 
@@ -65,6 +65,42 @@ def _reconcile_orphaned_syncs() -> None:
             )
     except Exception:  # noqa: BLE001
         logging.getLogger("startup").warning("Could not reconcile orphaned evaluation jobs.")
+    finally:
+        db.close()
+
+    # Commit analysis / task-attribution jobs run as in-process BackgroundTasks,
+    # so a restart (incl. the dev reloader) drops any in-flight batch and leaves
+    # rows stuck at 'running' — the Gantt tab would then spin "Analyzing…"
+    # forever. Flip those back to 'failed' so they show as re-runnable, not live.
+    db = SessionLocal()
+    try:
+        analyses = db.execute(
+            update(Commit)
+            .where(Commit.analysis_status == "running")
+            .values(analysis_status="failed", analysis_error="Interrupted by server restart.")
+        )
+        links = db.execute(
+            update(Commit)
+            .where(Commit.link_status == "running")
+            .values(link_status="failed", link_error="Interrupted by server restart.")
+        )
+        # Queued-but-never-started jobs have no in-process worker after a restart;
+        # drop them back to idle so they're re-runnable, not stuck "Queued".
+        queued = db.execute(
+            update(Commit)
+            .where(Commit.link_status == "queued")
+            .values(link_status="none")
+        )
+        db.commit()
+        if analyses.rowcount or links.rowcount or queued.rowcount:
+            logging.getLogger("startup").info(
+                "Reset %d orphaned commit analysis, %d running and %d queued attribution job(s).",
+                analyses.rowcount,
+                links.rowcount,
+                queued.rowcount,
+            )
+    except Exception:  # noqa: BLE001
+        logging.getLogger("startup").warning("Could not reconcile orphaned commit jobs.")
     finally:
         db.close()
 

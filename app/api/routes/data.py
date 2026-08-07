@@ -1,11 +1,11 @@
 """Read + delete endpoints for the Data tab: sprints, tasks, repos, commits, PRs."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import get_or_404
+from app.api.deps import get_or_404, run_in_session
 from app.db import get_db
 from app.models import (
     Commit,
@@ -18,14 +18,33 @@ from app.models import (
     Task,
 )
 from app.schemas.data import (
+    CommitAttachIn,
+    CommitCandidateTask,
+    CommitDetail,
+    CommitLinkOut,
     CommitOut,
+    GanttOut,
     PRReviewOut,
     PullRequestOut,
     RepoOut,
     SprintOut,
+    TaskCommit,
     TaskDetail,
     TaskOut,
 )
+from app.schemas.jobs import AnalyzeAllOut
+from app.services.commit_link import (
+    attach_commit,
+    candidate_tasks_for_commit,
+    cancel_commit,
+    cancel_project_commits,
+    enqueue_commit,
+    enqueue_project_commits,
+    reset_commit,
+    reset_project_matches,
+    run_link_worker,
+)
+from app.services.gantt import build_gantt
 
 router = APIRouter()
 
@@ -76,10 +95,138 @@ def list_tasks(project_id: int, db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/projects/{project_id}/gantt", response_model=GanttOut)
+def project_gantt(project_id: int, db: Session = Depends(get_db)):
+    """Per-member timeline of Jira tasks with git commits attributed to them."""
+    get_or_404(db, Project, project_id)
+    return build_gantt(db, project_id)
+
+
+def _commit_link_out(c: Commit) -> CommitLinkOut:
+    return CommitLinkOut(
+        commit_id=c.id,
+        link_status=c.link_status,
+        linked_task_id=c.linked_task_id,
+        link_reason=c.link_reason,
+        error=c.link_error,
+    )
+
+
+@router.post("/commits/{commit_id}/link", response_model=CommitLinkOut, status_code=202)
+def link_one_commit(commit_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Queue a single commit for attribution and kick the project's drain worker."""
+    commit = get_or_404(db, Commit, commit_id, "Commit")
+    project_id = commit.repo.project_id
+    enqueue_commit(db, commit_id)
+    background.add_task(run_in_session, run_link_worker, project_id)
+    return _commit_link_out(commit)
+
+
+@router.post("/commits/{commit_id}/link/cancel", response_model=CommitLinkOut, status_code=202)
+def cancel_one_commit(commit_id: int, db: Session = Depends(get_db)):
+    """Remove a queued commit from the queue, or stop a running attribution."""
+    get_or_404(db, Commit, commit_id, "Commit")
+    commit = cancel_commit(db, commit_id)
+    return _commit_link_out(commit)
+
+
+@router.post("/commits/{commit_id}/link/reset", response_model=CommitLinkOut, status_code=202)
+def reset_one_commit(commit_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Clear a matched commit's link and re-queue it for attribution."""
+    existing = get_or_404(db, Commit, commit_id, "Commit")
+    project_id = existing.repo.project_id
+    commit = reset_commit(db, commit_id)
+    background.add_task(run_in_session, run_link_worker, project_id)
+    return _commit_link_out(commit)
+
+
+@router.get("/commits/{commit_id}/detail", response_model=CommitDetail)
+def commit_detail(commit_id: int, db: Session = Depends(get_db)):
+    """Full commit view with the member's sprint tasks as manual-attach candidates."""
+    c = get_or_404(db, Commit, commit_id, "Commit")
+    sprint, tasks = candidate_tasks_for_commit(db, c)
+    sprint_names = dict(
+        db.execute(
+            select(Sprint.id, Sprint.name).where(Sprint.project_id == c.repo.project_id)
+        ).all()
+    )
+    analysis = c.analysis if isinstance(c.analysis, dict) else None
+    return CommitDetail(
+        id=c.id,
+        sha=c.sha,
+        message=c.message,
+        authored_at=c.authored_at,
+        additions=c.additions,
+        deletions=c.deletions,
+        files_changed=c.files_changed,
+        author_name=_identity_name(c.author),
+        summary=(analysis or {}).get("summary"),
+        analysis=analysis,
+        link_status=c.link_status,
+        linked_task_id=c.linked_task_id,
+        link_reason=c.link_reason,
+        sprint_name=sprint.name if sprint else None,
+        candidates=[
+            CommitCandidateTask(
+                id=t.id,
+                key=t.external_key,
+                title=t.title,
+                status_category=t.status_category.value,
+                assignee_name=_identity_name(t.assignee),
+                sprint_name=sprint_names.get(t.sprint_id),
+            )
+            for t in tasks
+        ],
+    )
+
+
+@router.post("/commits/{commit_id}/link/attach", response_model=CommitLinkOut)
+def attach_one_commit(commit_id: int, body: CommitAttachIn, db: Session = Depends(get_db)):
+    """Manually attach a commit to a chosen Jira task."""
+    get_or_404(db, Commit, commit_id, "Commit")
+    get_or_404(db, Task, body.task_id, "Task")
+    commit = attach_commit(db, commit_id, body.task_id)
+    return _commit_link_out(commit)
+
+
+@router.post("/projects/{project_id}/link-commits", response_model=AnalyzeAllOut, status_code=202)
+def link_all_commits(project_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Queue every not-yet-linked commit in the project (the 'Analyze all')."""
+    get_or_404(db, Project, project_id)
+    ids = enqueue_project_commits(db, project_id)
+    if ids:
+        background.add_task(run_in_session, run_link_worker, project_id)
+    return AnalyzeAllOut(queued=len(ids), commit_ids=ids)
+
+
+@router.post("/projects/{project_id}/link-commits/cancel", response_model=AnalyzeAllOut, status_code=202)
+def cancel_all_commits(project_id: int, db: Session = Depends(get_db)):
+    """Clear the project's attribution queue and stop any running commits."""
+    get_or_404(db, Project, project_id)
+    count = cancel_project_commits(db, project_id)
+    return AnalyzeAllOut(queued=count, commit_ids=[])
+
+
+@router.post("/projects/{project_id}/link-commits/reset", response_model=AnalyzeAllOut, status_code=202)
+def reset_all_matches(project_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Clear every matched commit's link and re-queue them (re-attribution)."""
+    get_or_404(db, Project, project_id)
+    ids = reset_project_matches(db, project_id)
+    if ids:
+        background.add_task(run_in_session, run_link_worker, project_id)
+    return AnalyzeAllOut(queued=len(ids), commit_ids=ids)
+
+
 @router.get("/tasks/{task_id}", response_model=TaskDetail)
 def task_detail(task_id: int, db: Session = Depends(get_db)):
     t = get_or_404(db, Task, task_id, "Task")
     sprint = db.get(Sprint, t.sprint_id) if t.sprint_id else None
+    commits = db.execute(
+        select(Commit)
+        .where(Commit.linked_task_id == t.id)
+        .order_by(Commit.authored_at)
+        .options(selectinload(Commit.author))
+    ).scalars().all()
     return TaskDetail(
         id=t.id,
         key=t.external_key,
@@ -92,6 +239,16 @@ def task_detail(task_id: int, db: Session = Depends(get_db)):
         hours=round((t.worklog_seconds or 0) / 3600.0, 1),
         assignee=t.assignee.display_name if t.assignee else None,
         sprint=sprint.name if sprint else None,
+        commits=[
+            TaskCommit(
+                id=c.id,
+                sha=c.sha,
+                authored_at=c.authored_at,
+                summary=(c.analysis or {}).get("summary") if isinstance(c.analysis, dict) else None,
+                author_name=_identity_name(c.author),
+            )
+            for c in commits
+        ],
     )
 
 

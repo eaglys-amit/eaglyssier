@@ -13,12 +13,14 @@ import { qk } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import type { ProjectDetail } from "@/types/api";
 
+import { CommitSheet } from "@/features/project-detail/CommitSheet";
 import { TaskSheet } from "@/features/project-detail/TaskSheet";
 import { ActivityTab } from "@/features/project-detail/tabs/ActivityTab";
 import { CapacityTab } from "@/features/project-detail/tabs/CapacityTab";
 import { DataTab } from "@/features/project-detail/tabs/DataTab";
 import { DeliverablesTab } from "@/features/project-detail/tabs/DeliverablesTab";
 import { EvaluationTab } from "@/features/project-detail/tabs/EvaluationTab";
+import { GanttTab } from "@/features/project-detail/tabs/GanttTab";
 import { IntegrationsTab } from "@/features/project-detail/tabs/IntegrationsTab";
 import { KpiTab } from "@/features/project-detail/tabs/KpiTab";
 import { ProjectMembersTab } from "@/features/project-detail/tabs/ProjectMembersTab";
@@ -28,6 +30,7 @@ import { TerminalTab } from "@/features/project-detail/tabs/TerminalTab";
 
 const TABS = [
   { key: "data", label: "Data" },
+  { key: "gantt", label: "Gantt Chart" },
   { key: "reports", label: "Reports" },
   { key: "deliverables", label: "Deliverables" },
   { key: "kpi", label: "KPI" },
@@ -138,6 +141,7 @@ export function ProjectDetailLayout() {
             />
           </div>
           {tab === "data" && <DataTab projectId={projectId} />}
+          {tab === "gantt" && <GanttTab projectId={projectId} />}
           {tab === "reports" && <ReportsTab projectId={projectId} />}
           {tab === "deliverables" && <DeliverablesTab projectId={projectId} project={project} />}
           {tab === "kpi" && <KpiTab projectId={projectId} />}
@@ -151,6 +155,7 @@ export function ProjectDetailLayout() {
       )}
 
       <TaskSheet />
+      <CommitSheet />
     </>
   );
 }

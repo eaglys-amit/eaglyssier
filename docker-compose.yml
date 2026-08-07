@@ -1,3 +1,7 @@
+# Pinned so volume/network names stay app-scoped (eaglyssier_pgdata, ...)
+# regardless of the checkout directory name.
+name: eaglyssier
+
 services:
   db:
     image: postgres:16
@@ -7,10 +11,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-reports}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      # Host port is overridable to avoid clashing with another local Postgres;
-      # the app always reaches the DB over the internal network (db:5432).
-      - "${DB_HOST_PORT:-5432}:5432"
+    # No host port mapping: Postgres is reachable only from other services on
+    # the dbnet network (db:5432), never from the host. This avoids clashing
+    # with a local Postgres and keeps the DB off the host's interfaces. To poke
+    # at it, go through the container instead:
+    #   docker compose exec db psql -U reports reports
+    expose:
+      - "5432"
+    # dbnet only — see the networks block at the bottom. Deliberately NOT on
+    # `default`, so the DB has no route to the internet or the host gateway.
+    networks:
+      - dbnet
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reports}"]
       interval: 5s
@@ -76,8 +87,23 @@ services:
       CLAUDE_CONFIG_DIR: /root/.claude
     ports:
       - "8000:8000"
+    # Both networks: `default` for the published port, rustfs, and outbound
+    # traffic (Claude CLI, GitHub/GitLab APIs); `dbnet` to reach Postgres.
+    networks:
+      - default
+      - dbnet
     volumes:
-      - .:/code
+      # Mount ONLY the backend package for hot-reload (uvicorn watches app/).
+      # Mounting the whole repo (`.:/code`) would overlay /code/frontend/dist —
+      # the SPA baked into the image — with the host's dist, so frontend changes
+      # would only appear after a manual `npm run build`. Scoping to app/ lets the
+      # image's built SPA serve on :8000, so `docker compose build` reflects
+      # frontend changes. For a live frontend loop, use the Vite dev server
+      # (`docker compose --profile dev up web`, or `npm run dev` in frontend/).
+      - ./app:/code/app
+      # Migrations live outside app/; mount them too so new revisions are picked
+      # up by `alembic upgrade head` at container start without a rebuild.
+      - ./migrations:/code/migrations
       # Persists the Claude Code CLI OAuth login across restarts. Log in once with:
       #   docker compose run --rm app claude login
       - claude_config:/root/.claude
@@ -100,7 +126,21 @@ services:
     depends_on:
       - app
 
+networks:
+  # App-private DB network. `internal: true` means Docker attaches no gateway,
+  # so containers here can't reach the internet or the host — and the host
+  # can't route in. Only db and app are attached.
+  dbnet:
+    internal: true
+  # `default` is the implicit network for every other service (rustfs, web);
+  # declared here only to document it alongside dbnet.
+  default:
+
 volumes:
+  # Docker-managed named volume (eaglyssier_pgdata), not a host bind mount: the
+  # DB files live inside Docker's storage and aren't reachable from the host
+  # filesystem or shared with any other compose project. Wipe the DB with
+  # `docker compose down -v`; back it up via `docker compose exec db pg_dump`.
   pgdata:
   rustfsdata:
   claude_config:

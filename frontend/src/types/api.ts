@@ -1,7 +1,7 @@
 /** Mirrors the Pydantic schemas in app/schemas/. */
 
 export type StatusCategory = "todo" | "in_progress" | "done";
-export type JobStatus = "none" | "idle" | "running" | "done" | "ready" | "failed";
+export type JobStatus = "none" | "idle" | "queued" | "running" | "done" | "ready" | "failed";
 export type SyncRunStatus = "running" | "success" | "failed";
 export type ReportStatus = "pending" | "generating" | "ready" | "failed";
 
@@ -139,6 +139,14 @@ export interface Task {
   assignee_member_id: number | null;
 }
 
+export interface TaskCommit {
+  id: number;
+  sha: string;
+  authored_at: string | null;
+  summary: string | null;
+  author_name: string | null;
+}
+
 export interface TaskDetail {
   id: number;
   key: string;
@@ -151,6 +159,7 @@ export interface TaskDetail {
   hours: number;
   assignee: string | null;
   sprint: string | null;
+  commits: TaskCommit[];
 }
 
 export interface Repo {
@@ -239,6 +248,88 @@ export interface PullRequest {
   author_name: string | null;
   author_member_id: number | null;
   reviews: PRReview[];
+}
+
+export interface GanttCommit {
+  id: number;
+  sha: string;
+  authored_at: string | null;
+  summary: string | null;
+  additions: number;
+  deletions: number;
+  author_name: string | null;
+  repo_name: string | null;
+  link_status: JobStatus;
+}
+
+export interface GanttItem {
+  id: string;
+  kind: "jira" | "commit";
+  task_id: number | null;
+  key: string | null;
+  title: string;
+  status_category: StatusCategory | null;
+  start: string;
+  end: string;
+  story_points: number | null;
+  commits: GanttCommit[];
+}
+
+export interface GanttRow {
+  member_id: number | null;
+  display_name: string;
+  items: GanttItem[];
+}
+
+export interface GanttSprint {
+  id: number;
+  name: string;
+  state: string | null;
+  start: string;
+  end: string;
+}
+
+export interface GanttOut {
+  rows: GanttRow[];
+  sprints: GanttSprint[];
+  unassigned: GanttCommit[];
+  range_start: string | null;
+  range_end: string | null;
+}
+
+export interface CommitLink {
+  commit_id: number;
+  link_status: JobStatus;
+  linked_task_id: number | null;
+  link_reason: string | null;
+  error: string | null;
+}
+
+export interface CommitCandidateTask {
+  id: number;
+  key: string;
+  title: string;
+  status_category: StatusCategory;
+  assignee_name: string | null;
+  sprint_name: string | null;
+}
+
+export interface CommitDetail {
+  id: number;
+  sha: string;
+  message: string | null;
+  authored_at: string | null;
+  additions: number;
+  deletions: number;
+  files_changed: number;
+  author_name: string | null;
+  summary: string | null;
+  analysis: CommitAnalysisPayload | null;
+  link_status: JobStatus;
+  linked_task_id: number | null;
+  link_reason: string | null;
+  sprint_name: string | null;
+  candidates: CommitCandidateTask[];
 }
 
 export interface Report {

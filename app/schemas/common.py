@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 # Lifecycle of LLM/background jobs tracked via *_status columns.
-JobStatus = Literal["none", "idle", "running", "done", "ready", "failed"]
+JobStatus = Literal["none", "idle", "queued", "running", "done", "ready", "failed"]
 
 
 class ApiModel(BaseModel):

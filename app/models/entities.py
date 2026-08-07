@@ -378,8 +378,22 @@ class Commit(Base, TimestampMixin):
     analysis_model: Mapped[str | None] = mapped_column(String(128))
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # LLM attribution of this commit to a Jira task, scoped to the sprint that
+    # contains authored_at and matched against task titles/descriptions (see
+    # app.services.commit_link). linked_task_id NULL after a 'ready' run means
+    # "no matching task in that sprint".
+    linked_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    link_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    link_error: Mapped[str | None] = mapped_column(Text)
+    link_reason: Mapped[str | None] = mapped_column(Text)  # LLM rationale for the match
+
     repo: Mapped["GitRepo"] = relationship(back_populates="commits")
     author: Mapped["MemberIdentity"] = relationship()
+    linked_task: Mapped["Task"] = relationship()
 
 
 class PullRequest(Base, TimestampMixin):
