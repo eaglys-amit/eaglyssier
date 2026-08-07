@@ -26,6 +26,7 @@ from app.models.entities import (
     SyncRun,
     SyncStatus,
     Task,
+    TaskBreakdown,
 )
 
 __all__ = [
@@ -53,6 +54,7 @@ __all__ = [
     "PokerRound",
     "PokerVote",
     "ReferenceFile",
+    "TaskBreakdown",
     "SyncRun",
     "SyncStatus",
 ]

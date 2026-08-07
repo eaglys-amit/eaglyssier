@@ -15,7 +15,7 @@ from app import scheduler
 from app.api import api_router
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Commit, EvaluationSheet, SyncRun, SyncStatus
+from app.models import Commit, EvaluationSheet, SyncRun, SyncStatus, TaskBreakdown
 from app.storage import rustfs
 from app.web.routes import provider_ws, report_artifacts, terminal
 
@@ -101,6 +101,25 @@ def _reconcile_orphaned_syncs() -> None:
             )
     except Exception:  # noqa: BLE001
         logging.getLogger("startup").warning("Could not reconcile orphaned commit jobs.")
+    finally:
+        db.close()
+
+    # AI task breakdowns are BackgroundTasks too, so the same restart leaves a
+    # draft stuck at 'running' and the UI polling forever.
+    db = SessionLocal()
+    try:
+        drafts = db.execute(
+            update(TaskBreakdown)
+            .where(TaskBreakdown.status == "running")
+            .values(status="failed", error="Interrupted by server restart.")
+        )
+        db.commit()
+        if drafts.rowcount:
+            logging.getLogger("startup").info(
+                "Marked %d orphaned task breakdown(s) as failed.", drafts.rowcount
+            )
+    except Exception:  # noqa: BLE001
+        logging.getLogger("startup").warning("Could not reconcile orphaned breakdowns.")
     finally:
         db.close()
 

@@ -43,4 +43,8 @@ export const qk = {
   // swept by a project-wide invalidation mid-round.
   pokerSession: (sessionId: number) => ["poker", sessionId] as const,
   referenceFiles: (id: number) => ["projects", id, "references"] as const,
+  breakdowns: (id: number) => ["projects", id, "breakdowns"] as const,
+  // Outside the project subtree: polled by id while generating, and must not be
+  // swept by a project-wide invalidation mid-job.
+  breakdown: (breakdownId: number) => ["breakdowns", breakdownId] as const,
 };

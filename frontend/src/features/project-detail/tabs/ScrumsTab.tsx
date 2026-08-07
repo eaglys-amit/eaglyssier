@@ -40,7 +40,7 @@ export function ScrumsTab({ projectId }: { projectId: number }) {
       ) : view === "poker" ? (
         <PokerView projectId={projectId} sprintId={sprintId} />
       ) : view === "docs" ? (
-        <DocsView projectId={projectId} />
+        <DocsView projectId={projectId} sprintId={sprintId} />
       ) : (
         <NotYet view={view} />
       )}

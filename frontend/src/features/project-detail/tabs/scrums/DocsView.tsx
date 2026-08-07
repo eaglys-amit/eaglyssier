@@ -1,4 +1,4 @@
-import { Download, ExternalLink, FileText, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Download, ExternalLink, FileText, RefreshCw, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -17,6 +17,7 @@ import {
 import { formatBytes, formatDate } from "@/lib/format";
 import type { ReferenceFile } from "@/types/api";
 
+import { BreakdownPanel } from "./BreakdownPanel";
 import { FileDropZone } from "./FileDropZone";
 import { useReferenceFiles } from "./useReferenceFiles";
 
@@ -28,7 +29,14 @@ import { useReferenceFiles } from "./useReferenceFiles";
  * — which is why extraction status is surfaced per row rather than hidden: a
  * document with no extractable text is stored fine but can't inform a prompt.
  */
-export function DocsView({ projectId }: { projectId: number }) {
+export function DocsView({
+  projectId,
+  sprintId,
+}: {
+  projectId: number;
+  /** Tasks created from a draft land in this sprint. */
+  sprintId: number | null;
+}) {
   const { files, isPending, upload, remove, reExtract } = useReferenceFiles(projectId);
 
   return (
@@ -74,14 +82,7 @@ export function DocsView({ projectId }: { projectId: number }) {
         </div>
       )}
 
-      <div className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-        <Sparkles className="mt-0.5 size-4 shrink-0" />
-        <span>
-          AI task breakdown reads these documents to draft an epic / task / subtask tree with
-          suggested estimates. That's the next phase — uploading now means it has something to
-          work from.
-        </span>
-      </div>
+      <BreakdownPanel projectId={projectId} sprintId={sprintId} files={files ?? []} />
     </div>
   );
 }

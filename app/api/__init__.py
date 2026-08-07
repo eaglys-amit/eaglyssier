@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     analysis,
     backlog,
+    breakdown,
     capacity,
     data,
     deliverables,
@@ -47,5 +48,6 @@ for _r in (
     sprints.router,
     poker.router,
     references.router,
+    breakdown.router,
 ):
     api_router.include_router(_r)

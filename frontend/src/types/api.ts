@@ -854,3 +854,68 @@ export interface ReferenceUpload {
   uploaded: ReferenceFile[];
   rejected: RejectedFile[];
 }
+
+// ------------------------------------------------------- AI task breakdown
+
+export type BreakdownLevel = "epic" | "task" | "subtask";
+export type BreakdownStatus = JobStatus | "accepted";
+
+/** Flat node with a string parent ref — the UI nests them for display. */
+export interface BreakdownNode {
+  id: string;
+  parent: string | null;
+  level: BreakdownLevel;
+  title: string;
+  description: string | null;
+  acceptance_criteria: string | null;
+  issue_type: string | null;
+  /** Leaves only; a node with children carries none. */
+  story_points: number | null;
+  priority: string | null;
+  rationale: string | null;
+}
+
+export interface BreakdownDraft {
+  nodes: BreakdownNode[];
+}
+
+export interface TaskBreakdown {
+  id: number;
+  project_id: number;
+  sprint_id: number | null;
+  parent_task_id: number | null;
+  parent_task_key: string | null;
+  title: string;
+  instructions: string | null;
+  reference_file_ids: number[];
+  reference_filenames: string[];
+  status: BreakdownStatus;
+  draft: BreakdownDraft | null;
+  error: string | null;
+  model: string | null;
+  created_at: string | null;
+  generated_at: string | null;
+  accepted_at: string | null;
+  created_task_ids: number[];
+}
+
+export interface BreakdownCreateIn {
+  title?: string | null;
+  instructions?: string | null;
+  reference_file_ids: number[];
+  sprint_id?: number | null;
+  parent_task_id?: number | null;
+}
+
+export interface BreakdownAcceptIn {
+  /** Ancestors of a selected node are pulled in server-side. */
+  node_ids: string[];
+  sprint_id?: number | null;
+}
+
+export interface BreakdownAcceptOut {
+  breakdown_id: number;
+  created: number;
+  task_ids: number[];
+  warnings: string[];
+}

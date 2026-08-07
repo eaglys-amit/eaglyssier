@@ -680,3 +680,47 @@ class ReferenceFile(Base, TimestampMixin):
 
     project: Mapped["Project"] = relationship()
     task: Mapped["Task"] = relationship()
+
+
+class TaskBreakdown(Base, TimestampMixin):
+    """An AI-drafted epic/task/subtask tree, staged before the user accepts it.
+
+    The whole tree lives in the ``draft`` JSON column as a flat node list with
+    string parent refs. Per-node rows would need their own parent/rank plumbing
+    and CRUD to model something the user edits as one form and accepts
+    atomically — and every other LLM result here is already staged as a JSON
+    blob on an owning row (Commit.analysis, GitRepo.summary, ProjectMember.kpi,
+    EvaluationSheet.axes).
+
+    ``reference_file_ids`` is deliberately a plain id list, not a FK table:
+    deleting a document afterwards shouldn't invalidate the provenance of a
+    draft that was already accepted.
+    """
+
+    __tablename__ = "task_breakdowns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    sprint_id: Mapped[int | None] = mapped_column(ForeignKey("sprints.id", ondelete="SET NULL"))
+    # When set, accepted nodes are parented under this task instead of being
+    # created at top level — "break this epic down" rather than "plan this doc".
+    parent_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    instructions: Mapped[str | None] = mapped_column(Text)
+    reference_file_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed | accepted
+    draft: Mapped[dict | None] = mapped_column(JSON)  # {"nodes": [...]}
+    error: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(128))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_task_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    project: Mapped["Project"] = relationship()
+    sprint: Mapped["Sprint"] = relationship()
+    parent_task: Mapped["Task"] = relationship()
