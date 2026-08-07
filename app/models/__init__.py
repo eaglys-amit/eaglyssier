@@ -16,6 +16,7 @@ from app.models.entities import (
     ProjectMember,
     PullRequest,
     PRReview,
+    ReferenceFile,
     Report,
     ReportStatus,
     Sprint,
@@ -51,6 +52,7 @@ __all__ = [
     "PokerSession",
     "PokerRound",
     "PokerVote",
+    "ReferenceFile",
     "SyncRun",
     "SyncStatus",
 ]

@@ -17,6 +17,14 @@ dependencies = [
     "weasyprint>=61.0",
     "apscheduler>=3.10",
     "cryptography>=42.0",
+    # Multipart form parsing. NOT optional: FastAPI raises at import time on a
+    # route signature containing UploadFile/Form without it, so the whole app
+    # fails to boot rather than just the upload endpoint.
+    "python-multipart>=0.0.9",
+    # PDF text extraction for reference documents. Chosen over pdfminer.six for
+    # zero transitive deps and speed — the consumer is an LLM prompt, which
+    # tolerates imperfect reading order. No OCR: a scanned PDF yields no text.
+    "pypdf>=4.2",
 ]
 
 [project.optional-dependencies]

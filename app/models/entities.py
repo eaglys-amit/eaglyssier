@@ -643,3 +643,40 @@ class PokerVote(Base, TimestampMixin):
 
     round: Mapped["PokerRound"] = relationship(back_populates="votes")
     member: Mapped["Member"] = relationship()
+
+
+class ReferenceFile(Base, TimestampMixin):
+    """An uploaded reference document (md/txt/html/pdf) stored in RustFS.
+
+    Feeds AI task breakdown: ``extracted_text`` is the plain text handed to the
+    model, so the bytes only ever need to come back for a human download. They
+    live in object storage under ``references/{project_id}/{id}/{filename}``,
+    mirroring how report artifacts are keyed.
+    """
+
+    __tablename__ = "reference_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    # Optional attachment point. SET NULL so deleting a task keeps the document —
+    # a spec usually outlives whichever ticket first referenced it.
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # md | txt | html | pdf
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    extracted_text: Mapped[str | None] = mapped_column(Text)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Extraction runs inline on upload (fast enough under the size cap), but the
+    # status columns still exist so the UI can show "no text extractable" and
+    # offer a retry — the observability of a job without the polling latency.
+    extract_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    extract_error: Mapped[str | None] = mapped_column(Text)
+
+    project: Mapped["Project"] = relationship()
+    task: Mapped["Task"] = relationship()

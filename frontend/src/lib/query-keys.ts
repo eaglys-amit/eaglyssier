@@ -42,4 +42,5 @@ export const qk = {
   // Outside the project subtree: it's polled by id every 2s and must not be
   // swept by a project-wide invalidation mid-round.
   pokerSession: (sessionId: number) => ["poker", sessionId] as const,
+  referenceFiles: (id: number) => ["projects", id, "references"] as const,
 };

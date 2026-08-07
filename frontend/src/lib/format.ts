@@ -40,3 +40,11 @@ export function formatPoints(n: number | null | undefined): string {
 export function taskLabel(task: { id: number; external_key: string | null }): string {
   return task.external_key || `#${task.id}`;
 }
+
+/** Human-readable byte size: 1.4 MB, 812 kB, 96 B. */
+export function formatBytes(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "—";
+  if (n < 1000) return `${n} B`;
+  if (n < 1_000_000) return `${Math.round(n / 1000)} kB`;
+  return `${(n / 1_000_000).toFixed(1)} MB`;
+}

@@ -822,3 +822,35 @@ export interface PokerApplyOut {
   story_points: number;
   warnings: string[];
 }
+
+// ------------------------------------------------------- reference documents
+
+export type ReferenceKind = "md" | "txt" | "html" | "pdf";
+
+export interface ReferenceFile {
+  id: number;
+  project_id: number;
+  task_id: number | null;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  kind: ReferenceKind;
+  extract_status: JobStatus;
+  extract_error: string | null;
+  /** 0 with status 'ready' means no extractable text — a scanned PDF, typically. */
+  char_count: number;
+  created_at: string | null;
+  view_url: string | null;
+  download_url: string | null;
+}
+
+export interface RejectedFile {
+  filename: string;
+  reason: string;
+}
+
+/** Uploads succeed per file, so rejections come back beside the successes. */
+export interface ReferenceUpload {
+  uploaded: ReferenceFile[];
+  rejected: RejectedFile[];
+}

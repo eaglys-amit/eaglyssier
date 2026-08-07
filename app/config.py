@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     claude_timeout_seconds: int = 180
     claude_max_diff_bytes: int = 60000  # cap on diff text sent to the model
 
+    # Reference documents (see app.services.references). The byte cap is
+    # enforced by a chunked read, not by Content-Length, which is client-supplied.
+    reference_max_bytes: int = 10_000_000  # 10 MB per file
+    reference_max_chars: int = 200_000  # cap on extracted text kept in the DB
+    breakdown_max_prompt_chars: int = 60_000  # per-prompt document budget
+
     @property
     def fernet_key(self) -> bytes:
         """Derive a stable urlsafe-base64 32-byte Fernet key from SECRET_KEY."""

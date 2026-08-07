@@ -17,6 +17,7 @@ from app.api.routes import (
     project_members,
     projects,
     provider,
+    references,
     reports,
     scope,
     settings,
@@ -45,5 +46,6 @@ for _r in (
     backlog.router,
     sprints.router,
     poker.router,
+    references.router,
 ):
     api_router.include_router(_r)
