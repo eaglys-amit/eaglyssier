@@ -23,7 +23,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import MemberIdentity, Sprint, StatusCategory, Task
+from app.models import MemberIdentity, Milestone, Sprint, StatusCategory, Task
 from app.schemas.backlog import (
     BacklogOut,
     BacklogSprintBucket,
@@ -93,6 +93,14 @@ def _check_sprint(db: Session, project_id: int, sprint_id: int | None) -> None:
         raise HTTPException(404, "Sprint not found")
 
 
+def _check_milestone(db: Session, project_id: int, milestone_id: int | None) -> None:
+    if milestone_id is None:
+        return
+    milestone = db.get(Milestone, milestone_id)
+    if milestone is None or milestone.project_id != project_id:
+        raise HTTPException(404, "Milestone not found")
+
+
 def _check_parent(db: Session, task: Task | None, project_id: int, parent_id: int | None) -> None:
     if parent_id is None:
         return
@@ -108,6 +116,7 @@ def _check_parent(db: Session, task: Task | None, project_id: int, parent_id: in
 
 def create_task(db: Session, project_id: int, data: TaskCreateIn) -> Task:
     _check_sprint(db, project_id, data.sprint_id)
+    _check_milestone(db, project_id, data.milestone_id)
     _check_parent(db, None, project_id, data.parent_id)
 
     task = Task(
@@ -123,6 +132,7 @@ def create_task(db: Session, project_id: int, data: TaskCreateIn) -> Task:
         estimate_source="manual" if data.story_points is not None else None,
         priority=data.priority,
         sprint_id=data.sprint_id,
+        milestone_id=data.milestone_id,
         parent_id=data.parent_id,
         assignee_identity_id=_resolve_assignee(db, project_id, data.assignee_member_id),
         rank=tasks_svc.next_rank(db, project_id),
@@ -147,6 +157,8 @@ def patch_task(db: Session, task: Task, data: TaskPatchIn) -> Task:
 
     if "sprint_id" in fields:
         _check_sprint(db, task.project_id, fields["sprint_id"])
+    if "milestone_id" in fields:
+        _check_milestone(db, task.project_id, fields["milestone_id"])
     if "parent_id" in fields:
         _check_parent(db, task, task.project_id, fields["parent_id"])
     if "assignee_member_id" in fields:

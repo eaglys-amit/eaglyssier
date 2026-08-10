@@ -22,6 +22,8 @@ import { formatDateTime, shortSha } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type { AnalyzeAll, GanttCommit, GanttOut, JobStatus } from "@/types/api";
 
+import { TabShell } from "@/features/project-detail/TabShell";
+
 import { GanttChart } from "./gantt/GanttChart";
 
 /** Narrow a Gantt payload to the [start, end] window of the selected sprints. */
@@ -221,17 +223,21 @@ export function GanttTab({ projectId }: { projectId: number }) {
 
   if (isPending) {
     return (
-      <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-        <Spinner /> Building timeline…
-      </div>
+      <TabShell tab="gantt">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner /> Building timeline…
+        </div>
+      </TabShell>
     );
   }
 
   if (error) {
     return (
-      <ErrorAlert
-        message={error instanceof ApiError ? error.detail : "Could not load the Gantt timeline."}
-      />
+      <TabShell tab="gantt">
+        <ErrorAlert
+          message={error instanceof ApiError ? error.detail : "Could not load the Gantt timeline."}
+        />
+      </TabShell>
     );
   }
 
@@ -260,102 +266,110 @@ export function GanttTab({ projectId }: { projectId: number }) {
 
   if (data.rows.length === 0 && data.unassigned.length === 0) {
     return (
-      <EmptyState
-        icon={GanttChartSquare}
-        title="Nothing to chart yet"
-        hint="Sync Jira tasks and repo commits (and map members on the Members tab) to see a timeline."
-      />
+      <TabShell tab="gantt">
+        <EmptyState
+          icon={GanttChartSquare}
+          title="Nothing to chart yet"
+          hint="Sync Jira tasks and repo commits (and map members under Members) to see a timeline."
+        />
+      </TabShell>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {sprintsAsc.length > 1 ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Sprints</span>
-          <Select value={String(effFrom?.id)} onValueChange={(v) => setFromId(Number(v))}>
-            <SelectTrigger size="sm" className="w-44">
-              <SelectValue placeholder="From…" />
-            </SelectTrigger>
-            <SelectContent>
-              {sprintsAsc.map((s) => (
-                <SelectItem key={s.id} value={String(s.id)}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="text-muted-foreground">to</span>
-          <Select value={String(effTo?.id)} onValueChange={(v) => setToId(Number(v))}>
-            <SelectTrigger size="sm" className="w-44">
-              <SelectValue placeholder="To…" />
-            </SelectTrigger>
-            <SelectContent>
-              {sprintsAsc.map((s) => (
-                <SelectItem key={s.id} value={String(s.id)}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {isFiltered ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setFromId(null);
-                setToId(null);
-              }}
-            >
-              <X className="size-4" />
-              Clear
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {hasChart ? (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-              <LegendDot className="bg-muted-foreground/30" label="To do" />
-              <LegendDot className="bg-warning/80" label="In progress" />
-              <LegendDot className="bg-success/80" label="Done" />
-              <span className="inline-flex items-center gap-1.5">
-                <span className="inline-block size-1.5 rounded-full bg-primary" /> Attributed commit
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="inline-block h-3 w-4 rounded-sm border border-dashed border-primary/50 bg-primary/10" />
-                Sprint
-              </span>
-            </div>
-            {matchedCount > 0 ? (
-              <ConfirmDialog
-                trigger={
-                  <Button size="sm" variant="outline" disabled={resetAll.isPending}>
-                    <RefreshCw className="size-4" />
-                    Re-analyze matched ({matchedCount})
-                  </Button>
-                }
-                title="Re-analyze matched commits?"
-                description="Clears the current task link for every matched commit and re-runs attribution with the member-aware rule. This re-runs the analysis provider and may take a while."
-                confirmLabel="Re-analyze"
-                destructive={false}
-                onConfirm={() => resetAll.mutate()}
-              />
+    <TabShell
+      tab="gantt"
+      // The sprint window is the tab's one control, so it belongs in the bar.
+      actions={
+        sprintsAsc.length > 1 ? (
+          <div className="flex items-center gap-2 text-xs">
+            <Select value={String(effFrom?.id)} onValueChange={(v) => setFromId(Number(v))}>
+              <SelectTrigger size="sm" className="w-40">
+                <SelectValue placeholder="From…" />
+              </SelectTrigger>
+              <SelectContent>
+                {sprintsAsc.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-muted-foreground">to</span>
+            <Select value={String(effTo?.id)} onValueChange={(v) => setToId(Number(v))}>
+              <SelectTrigger size="sm" className="w-40">
+                <SelectValue placeholder="To…" />
+              </SelectTrigger>
+              <SelectContent>
+                {sprintsAsc.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isFiltered ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setFromId(null);
+                  setToId(null);
+                }}
+              >
+                <X className="size-4" />
+                Clear
+              </Button>
             ) : null}
           </div>
-          <GanttChart data={view} />
-        </>
-      ) : data.rows.length > 0 ? (
-        <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-          No tasks or commits in the selected sprint range.
-        </p>
-      ) : null}
+        ) : null
+      }
+    >
+      <div className="space-y-4">
+        {hasChart ? (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                <LegendDot className="bg-muted-foreground/30" label="To do" />
+                <LegendDot className="bg-warning/80" label="In progress" />
+                <LegendDot className="bg-success/80" label="Done" />
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block size-1.5 rounded-full bg-primary" /> Attributed
+                  commit
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-4 rounded-sm border border-dashed border-primary/50 bg-primary/10" />
+                  Sprint
+                </span>
+              </div>
+              {matchedCount > 0 ? (
+                <ConfirmDialog
+                  trigger={
+                    <Button size="sm" variant="outline" disabled={resetAll.isPending}>
+                      <RefreshCw className="size-4" />
+                      Re-analyze matched ({matchedCount})
+                    </Button>
+                  }
+                  title="Re-analyze matched commits?"
+                  description="Clears the current task link for every matched commit and re-runs attribution with the member-aware rule. This re-runs the analysis provider and may take a while."
+                  confirmLabel="Re-analyze"
+                  destructive={false}
+                  onConfirm={() => resetAll.mutate()}
+                />
+              ) : null}
+            </div>
+            <GanttChart data={view} />
+          </>
+        ) : data.rows.length > 0 ? (
+          <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            No tasks or commits in the selected sprint range.
+          </p>
+        ) : null}
 
-      {data.unassigned.length ? (
-        <UnassignedCommits projectId={projectId} commits={data.unassigned} />
-      ) : null}
-    </div>
+        {data.unassigned.length ? (
+          <UnassignedCommits projectId={projectId} commits={data.unassigned} />
+        ) : null}
+      </div>
+    </TabShell>
   );
 }

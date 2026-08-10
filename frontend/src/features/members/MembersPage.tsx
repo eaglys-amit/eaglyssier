@@ -3,7 +3,9 @@ import { Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { BrandLink } from "@/components/layout/BrandLink";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
@@ -128,13 +130,10 @@ export function MembersPage() {
   return (
     <>
       <PageHeader
+        leading={<BrandLink />}
         title="Members"
         description="The curated people directory. Map accounts to members inside each project."
-        actions={
-          <Button size="sm" onClick={() => setDialog({ open: true, member: null })}>
-            <Plus className="size-4" /> New member
-          </Button>
-        }
+        actions={<ThemeToggle />}
       />
       <MemberFormDialog
         open={dialog.open}
@@ -142,6 +141,15 @@ export function MembersPage() {
         member={dialog.member}
       />
       <div className="p-6">
+      {/* The empty state carries its own create button, so the toolbar steps
+          aside for it. */}
+      {isPending || members?.length ? (
+        <div className="mb-4 flex justify-end">
+          <Button size="sm" onClick={() => setDialog({ open: true, member: null })}>
+            <Plus className="size-4" /> New member
+          </Button>
+        </div>
+      ) : null}
       {isPending ? (
         <TableSkeleton />
       ) : !members?.length ? (

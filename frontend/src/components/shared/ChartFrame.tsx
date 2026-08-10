@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Shared chrome for a chart: title, legend, and a table view of the same
- * numbers.
+ * numbers. Used by the Scrums burndown/velocity charts and the Milestones
+ * roadmap.
  *
  * The table isn't a nicety — it's the accessible twin. Nothing a chart shows may
  * be reachable *only* by hovering, and a colour-encoded plot needs a

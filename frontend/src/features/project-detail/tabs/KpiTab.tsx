@@ -18,6 +18,8 @@ import { qk } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import type { Kpi } from "@/types/api";
 
+import { TabShell } from "@/features/project-detail/TabShell";
+
 function KpiDetailCard({ kpi }: { kpi: Kpi }) {
   const payload = kpi.kpi;
   const metrics = payload?.metrics ?? {};
@@ -164,11 +166,13 @@ export function KpiTab({ projectId }: { projectId: number }) {
 
   if (kpis && !kpis.length) {
     return (
-      <EmptyState
-        icon={Gauge}
-        title="No members on this project"
-        hint="Add members on the Members tab first, then generate per-member KPIs here."
-      />
+      <TabShell tab="kpi">
+        <EmptyState
+          icon={Gauge}
+          title="No members on this project"
+          hint="Add members under Members in the sidebar first, then generate per-member KPIs here."
+        />
+      </TabShell>
     );
   }
 
@@ -177,71 +181,73 @@ export function KpiTab({ projectId }: { projectId: number }) {
   const allSelected = kpis?.length ? selected.size === kpis.length : false;
 
   return (
-    <div className="grid gap-4 md:grid-cols-[280px_1fr]">
-      <Card className="self-start">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Members</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1 p-2 pt-0">
-          <label className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-            <Checkbox
-              checked={allSelected}
-              onCheckedChange={(v) =>
-                setSelected(v === true ? new Set(kpis?.map((k) => k.member_id)) : new Set())
-              }
-            />
-            Select all
-          </label>
-          {(kpis ?? []).map((k) => (
-            <div
-              key={k.member_id}
-              className={cn(
-                "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5",
-                k.member_id === activeId ? "bg-accent" : "hover:bg-accent/50",
-              )}
-              onClick={() => {
-                params.set("member", String(k.member_id));
-                setParams(params, { replace: true });
-              }}
-            >
+    <TabShell tab="kpi">
+      <div className="grid gap-4 md:grid-cols-[280px_1fr]">
+        <Card className="self-start">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Members</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 p-2 pt-0">
+            <label className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
               <Checkbox
-                checked={selected.has(k.member_id)}
-                onClick={(e) => e.stopPropagation()}
+                checked={allSelected}
                 onCheckedChange={(v) =>
-                  setSelected((prev) => {
-                    const next = new Set(prev);
-                    if (v === true) next.add(k.member_id);
-                    else next.delete(k.member_id);
-                    return next;
-                  })
+                  setSelected(v === true ? new Set(kpis?.map((k) => k.member_id)) : new Set())
                 }
               />
-              <span className="min-w-0 flex-1 truncate text-sm">{k.display_name}</span>
-              {jobBadge(k.status, { none: "—", ready: "Ready", running: "…" })}
+              Select all
+            </label>
+            {(kpis ?? []).map((k) => (
+              <div
+                key={k.member_id}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5",
+                  k.member_id === activeId ? "bg-accent" : "hover:bg-accent/50",
+                )}
+                onClick={() => {
+                  params.set("member", String(k.member_id));
+                  setParams(params, { replace: true });
+                }}
+              >
+                <Checkbox
+                  checked={selected.has(k.member_id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onCheckedChange={(v) =>
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      if (v === true) next.add(k.member_id);
+                      else next.delete(k.member_id);
+                      return next;
+                    })
+                  }
+                />
+                <span className="min-w-0 flex-1 truncate text-sm">{k.display_name}</span>
+                {jobBadge(k.status, { none: "—", ready: "Ready", running: "…" })}
+              </div>
+            ))}
+            <div className="p-2">
+              <Button
+                className="w-full"
+                size="sm"
+                disabled={selected.size === 0 || generate.isPending}
+                onClick={() => generate.mutate([...selected])}
+              >
+                <Sparkles className="size-4" />
+                Generate {selected.size ? `(${selected.size})` : ""}
+              </Button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Each member's saved data scope (sprints/repos/dates) from the Data tab is applied.
+              </p>
             </div>
-          ))}
-          <div className="p-2">
-            <Button
-              className="w-full"
-              size="sm"
-              disabled={selected.size === 0 || generate.isPending}
-              onClick={() => generate.mutate([...selected])}
-            >
-              <Sparkles className="size-4" />
-              Generate {selected.size ? `(${selected.size})` : ""}
-            </Button>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Each member's saved data scope (sprints/repos/dates) from the Data tab is applied.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {active ? (
-        <KpiDetailCard kpi={active} />
-      ) : (
-        <EmptyState icon={Gauge} title="Select a member" />
-      )}
-    </div>
+        {active ? (
+          <KpiDetailCard kpi={active} />
+        ) : (
+          <EmptyState icon={Gauge} title="Select a member" />
+        )}
+      </div>
+    </TabShell>
   );
 }

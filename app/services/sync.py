@@ -239,11 +239,66 @@ def _sync_issue_tracker(
     db.flush()
 
     n_tasks = 0
+    # Parenting is a second pass: a child can arrive before its parent, so the
+    # target row may not exist yet on the first sync.
+    parent_keys: dict[int, str] = {}
     for dto in connector.fetch_tasks():
-        _upsert_task(db, integration, dto, sprint_by_ext)
+        task = _upsert_task(db, integration, dto, sprint_by_ext)
+        if dto.parent_external_key:
+            parent_keys[task.id] = dto.parent_external_key
         n_tasks += 1
     db.flush()
-    return {"sprints": n_sprints, "tasks": n_tasks}
+
+    n_parented = _link_parents(db, project_id, parent_keys)
+    db.flush()
+    return {"sprints": n_sprints, "tasks": n_tasks, "parented": n_parented}
+
+
+def _link_parents(db: Session, project_id: int, parent_keys: dict[int, str]) -> int:
+    """Resolve tracker parent keys to Task.parent_id, after every row exists.
+
+    Two rules keep this from destroying hand-made planning:
+
+    * **A local parent is never overwritten.** Parenting a synced task under a
+      locally-created epic is exactly what the breakdown and milestone flows
+      do; the tracker has no idea that epic exists and must not undo it.
+    * **A parent is never cleared.** The Jira ``parent`` field is simply absent
+      when there is none, which is indistinguishable from a field the token
+      couldn't read — so a missing value is treated as "no information", not as
+      "detach this task".
+    """
+    if not parent_keys:
+        return 0
+
+    rows = db.execute(
+        select(Task).where(
+            Task.project_id == project_id,
+            Task.external_key.in_(set(parent_keys.values())),
+            Task.source == "sync",
+        )
+    ).scalars().all()
+    id_by_key = {t.external_key: t.id for t in rows if t.external_key}
+
+    linked = 0
+    for task_id, parent_key in parent_keys.items():
+        parent_id = id_by_key.get(parent_key)
+        if parent_id is None or parent_id == task_id:
+            continue  # parent outside the synced set, or a self-reference
+        task = db.get(Task, task_id)
+        if task is None or task.parent_id == parent_id:
+            continue
+        if task.parent_id is not None:
+            current = db.get(Task, task.parent_id)
+            if current is not None and current.source == "local":
+                continue  # hand-made structure wins over the tracker's
+        if tasks_svc.would_cycle(db, task_id, parent_id):
+            log.warning(
+                "skipping parent %s for task %s: it would close a loop", parent_key, task_id
+            )
+            continue
+        task.parent_id = parent_id
+        linked += 1
+    return linked
 
 
 def _upsert_sprint(db: Session, project_id: int, dto: SprintDTO) -> Sprint:

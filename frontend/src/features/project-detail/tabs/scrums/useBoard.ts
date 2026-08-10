@@ -36,6 +36,10 @@ export function useBoard(projectId: number) {
     qc.invalidateQueries({ queryKey: qk.sprints(projectId) });
     qc.invalidateQueries({ queryKey: qk.taskTree(projectId) });
     qc.invalidateQueries({ queryKey: qk.capacity(projectId) });
+    // Milestones roll up these same tasks and derive their sprints from them,
+    // so a drag here moves the roadmap. Prefix key — sweeps roadmap and the
+    // per-milestone task lists too.
+    qc.invalidateQueries({ queryKey: qk.milestones(projectId) });
     // Gantt and commitment are keyed deeper than the board; sweep by prefix.
     qc.invalidateQueries({ queryKey: qk.gantt(projectId) });
     qc.invalidateQueries({

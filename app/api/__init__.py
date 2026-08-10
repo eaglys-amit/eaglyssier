@@ -10,10 +10,12 @@ from app.api.routes import (
     capacity,
     data,
     deliverables,
+    epics,
     evaluation,
     integrations,
     kpi,
     members,
+    milestones,
     poker,
     project_members,
     projects,
@@ -46,6 +48,11 @@ for _r in (
     # Scrums: the write side of sprints/tasks (reads stay in data.router).
     backlog.router,
     sprints.router,
+    # Rebuilds the hierarchy a flat tracker never sent, which the milestone
+    # generator below then has something to work with.
+    epics.router,
+    # Above the sprint horizon: milestones roll up the same tasks.
+    milestones.router,
     poker.router,
     references.router,
     breakdown.router,

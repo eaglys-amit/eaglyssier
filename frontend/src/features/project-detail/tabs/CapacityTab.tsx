@@ -25,6 +25,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatPoints } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
+import { TabShell } from "@/features/project-detail/TabShell";
 import { StoryPointScaleSection } from "@/features/project-detail/tabs/capacity/StoryPointScaleSection";
 import type { SprintCapacity, SprintCapacityIn } from "@/types/api";
 
@@ -180,43 +181,45 @@ export function CapacityTab({ projectId }: { projectId: number }) {
   });
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {/* Left: sprint capacity cards in a scroll area */}
-      <div className="min-w-0">
-        <div className="mb-2">
-          <h2 className="text-sm font-semibold tracking-tight">Sprint capacity</h2>
-          <p className="text-xs text-muted-foreground">
-            Allocated = focus factor × working days. Done = story points of that member's done
-            tasks in the sprint.
-          </p>
+    <TabShell tab="capacity">
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Left: sprint capacity cards in a scroll area */}
+        <div className="min-w-0">
+          <div className="mb-2">
+            <h2 className="text-sm font-semibold tracking-tight">Sprint capacity</h2>
+            <p className="text-xs text-muted-foreground">
+              Allocated = focus factor × working days. Done = story points of that member's done
+              tasks in the sprint.
+            </p>
+          </div>
+
+          {isPending ? (
+            <TableSkeleton rows={4} />
+          ) : !capacity?.length ? (
+            <EmptyState
+              icon={CalendarRange}
+              title="No sprints"
+              hint="Sync Jira to pull sprints, then set focus factors here."
+            />
+          ) : (
+            <div className="max-h-[calc(100vh-20rem)] space-y-2 overflow-y-auto pr-1">
+              {capacity.map((s) => (
+                <SprintCapacityCard
+                  key={s.sprint_id}
+                  sprint={s}
+                  saving={save.isPending && save.variables?.sprintId === s.sprint_id}
+                  onSave={(body) => save.mutate({ sprintId: s.sprint_id, body })}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        {isPending ? (
-          <TableSkeleton rows={4} />
-        ) : !capacity?.length ? (
-          <EmptyState
-            icon={CalendarRange}
-            title="No sprints"
-            hint="Sync Jira to pull sprints, then set focus factors here."
-          />
-        ) : (
-          <div className="max-h-[calc(100vh-14rem)] space-y-2 overflow-y-auto pr-1">
-            {capacity.map((s) => (
-              <SprintCapacityCard
-                key={s.sprint_id}
-                sprint={s}
-                saving={save.isPending && save.variables?.sprintId === s.sprint_id}
-                onSave={(body) => save.mutate({ sprintId: s.sprint_id, body })}
-              />
-            ))}
-          </div>
-        )}
+        {/* Right: story-point scale (always expanded) */}
+        <div className="lg:sticky lg:top-4 lg:self-start">
+          <StoryPointScaleSection projectId={projectId} />
+        </div>
       </div>
-
-      {/* Right: story-point scale (always expanded) */}
-      <div className="lg:sticky lg:top-4 lg:self-start">
-        <StoryPointScaleSection projectId={projectId} />
-      </div>
-    </div>
+    </TabShell>
   );
 }

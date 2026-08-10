@@ -1,118 +1,58 @@
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
+import { NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { PageHeader } from "@/components/layout/PageHeader";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/shared/EmptyState";
-import { FolderX } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
-import { qk } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
-import type { ProjectDetail } from "@/types/api";
 
-import { CommitSheet } from "@/features/project-detail/CommitSheet";
-import { TaskSheet } from "@/features/project-detail/TaskSheet";
+import { useProject } from "@/features/project-detail/ProjectShell";
 import { PROJECT_SETTINGS } from "@/features/project-detail/settings-nav";
+import { DEFAULT_TAB, isTabKey, PROJECT_TABS, type TabKey } from "@/features/project-detail/tabs-nav";
 import { CapacityTab } from "@/features/project-detail/tabs/CapacityTab";
 import { DataTab } from "@/features/project-detail/tabs/DataTab";
 import { DeliverablesTab } from "@/features/project-detail/tabs/DeliverablesTab";
 import { EvaluationTab } from "@/features/project-detail/tabs/EvaluationTab";
 import { GanttTab } from "@/features/project-detail/tabs/GanttTab";
 import { KpiTab } from "@/features/project-detail/tabs/KpiTab";
+import { MilestonesTab } from "@/features/project-detail/tabs/MilestonesTab";
 import { ReportsTab } from "@/features/project-detail/tabs/ReportsTab";
 import { ScrumsTab } from "@/features/project-detail/tabs/ScrumsTab";
 import { TerminalTab } from "@/features/project-detail/tabs/TerminalTab";
 
-// Analysis views only. Project setup (provider, integrations, members,
-// activity) lives on standalone pages linked from the title bar — see
-// PROJECT_SETTINGS.
-const TABS = [
-  { key: "data", label: "Data" },
-  // The write surface over the same sprints/tasks Data reads, so it sits next to it.
-  { key: "scrums", label: "Scrums" },
-  { key: "gantt", label: "Gantt Chart" },
-  { key: "reports", label: "Reports" },
-  { key: "deliverables", label: "Deliverables" },
-  { key: "kpi", label: "KPI" },
-  { key: "capacity", label: "Capacity" },
-  { key: "evaluation", label: "Evaluation" },
-  { key: "terminal", label: "Terminal" },
-] as const;
-
-type TabKey = (typeof TABS)[number]["key"];
-
+/**
+ * The project's analysis views. The strip of tabs is the first thing in the
+ * content column — the project itself is named in the sidebar — and each tab
+ * opens with its own title bar (TabShell) below it.
+ */
 export function ProjectDetailLayout() {
-  const { projectId: projectIdParam, tab: tabParam } = useParams();
-  const projectId = Number(projectIdParam);
+  const { tab: tabParam } = useParams();
+  const { projectId } = useProject();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Legacy deep links used /projects/3#kpi; map them onto the tab URL scheme.
   useEffect(() => {
     const hash = location.hash.replace("#", "");
-    const known =
-      TABS.some((t) => t.key === hash) || PROJECT_SETTINGS.some((s) => s.key === hash);
+    const known = isTabKey(hash) || PROJECT_SETTINGS.some((s) => s.key === hash);
     if (hash && known) {
       navigate(`/projects/${projectId}/${hash}${location.search}`, { replace: true });
     } else if (!tabParam) {
-      navigate(`/projects/${projectId}/data${location.search}`, { replace: true });
+      navigate(`/projects/${projectId}/${DEFAULT_TAB}${location.search}`, { replace: true });
     }
   }, [location.hash, location.search, navigate, projectId, tabParam]);
 
-  const tab: TabKey = TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : "data";
+  const tab: TabKey = isTabKey(tabParam) ? tabParam : DEFAULT_TAB;
 
   // Once the user starts a terminal session it stays mounted (hidden) across
   // tab switches so the PTY survives; it ends when they leave the project.
   const [terminalStarted, setTerminalStarted] = useState(false);
 
-  const { data: project, isPending, error } = useQuery({
-    queryKey: qk.project(projectId),
-    queryFn: () => api.get<ProjectDetail>(`/projects/${projectId}`),
-    enabled: Number.isFinite(projectId),
-  });
-
-  if (error instanceof ApiError && error.status === 404) {
-    return (
-      <div className="p-6 pt-16">
-        <EmptyState
-          icon={FolderX}
-          title="Project not found"
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link to="/projects">Back to projects</Link>
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
-
   return (
     // Full height of the scroll area so a tab can opt into fitting the screen
     // (the Data tab does, and scrolls inside its panels instead).
     <div className="flex h-full flex-col">
-      <PageHeader
-        backTo="/projects"
-        backLabel="Projects"
-        title={project?.name ?? (isPending ? "…" : "")}
-        badge={project?.key ? <Badge variant="secondary">{project.key}</Badge> : null}
-        // Setup lives on its own pages, reached from here rather than from the
-        // analysis tab strip.
-        actions={PROJECT_SETTINGS.map((s) => (
-          <Button key={s.key} asChild variant="ghost" size="sm">
-            <Link to={`/projects/${projectId}/${s.key}`}>
-              <s.icon className="size-4" />
-              {s.label}
-            </Link>
-          </Button>
-        ))}
-      />
-
-      <nav className="flex shrink-0 gap-1 overflow-x-auto border-b px-6">
-        {TABS.map((t) => (
+      {/* h-19 + border-b matches the sidebar header, so the two line up across
+          the seam. Sticky: the strip stays put while a long tab scrolls. */}
+      <nav className="sticky top-0 z-30 flex h-19 shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-6">
+        {PROJECT_TABS.map((t) => (
           <NavLink
             key={t.key}
             to={`/projects/${projectId}/${t.key}`}
@@ -130,37 +70,25 @@ export function ProjectDetailLayout() {
         ))}
       </nav>
 
-      {project?.description ? (
-        <p className="shrink-0 px-6 pt-4 text-sm text-muted-foreground">{project.description}</p>
-      ) : null}
-
-      <div className="min-h-0 flex-1 p-6">
-        {isPending || !project ? (
-          <TableSkeleton rows={8} />
-        ) : (
-          <>
-            <div className={tab === "terminal" ? "block" : "hidden"}>
-              <TerminalTab
-                projectId={projectId}
-                started={terminalStarted}
-                onStart={() => setTerminalStarted(true)}
-                onEnd={() => setTerminalStarted(false)}
-              />
-            </div>
-            {tab === "data" && <DataTab projectId={projectId} />}
-            {tab === "scrums" && <ScrumsTab projectId={projectId} />}
-            {tab === "gantt" && <GanttTab projectId={projectId} />}
-            {tab === "reports" && <ReportsTab projectId={projectId} />}
-            {tab === "deliverables" && <DeliverablesTab projectId={projectId} project={project} />}
-            {tab === "kpi" && <KpiTab projectId={projectId} />}
-            {tab === "capacity" && <CapacityTab projectId={projectId} />}
-            {tab === "evaluation" && <EvaluationTab projectId={projectId} />}
-          </>
-        )}
+      <div className="min-h-0 flex-1">
+        <div className={tab === "terminal" ? "block h-full" : "hidden"}>
+          <TerminalTab
+            projectId={projectId}
+            started={terminalStarted}
+            onStart={() => setTerminalStarted(true)}
+            onEnd={() => setTerminalStarted(false)}
+          />
+        </div>
+        {tab === "data" && <DataTab projectId={projectId} />}
+        {tab === "scrums" && <ScrumsTab projectId={projectId} />}
+        {tab === "milestones" && <MilestonesTab projectId={projectId} />}
+        {tab === "gantt" && <GanttTab projectId={projectId} />}
+        {tab === "reports" && <ReportsTab projectId={projectId} />}
+        {tab === "deliverables" && <DeliverablesTab projectId={projectId} />}
+        {tab === "kpi" && <KpiTab projectId={projectId} />}
+        {tab === "capacity" && <CapacityTab projectId={projectId} />}
+        {tab === "evaluation" && <EvaluationTab projectId={projectId} />}
       </div>
-
-      <TaskSheet />
-      <CommitSheet />
     </div>
   );
 }

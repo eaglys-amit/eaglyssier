@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { TabShell } from "@/features/project-detail/TabShell";
 import { ReposSection } from "@/features/project-detail/tabs/data/ReposSection";
 import { ScopeBar } from "@/features/project-detail/tabs/data/ScopeBar";
 import { SprintsSection } from "@/features/project-detail/tabs/data/SprintsSection";
@@ -79,44 +80,46 @@ export function DataTab({ projectId }: { projectId: number }) {
   };
 
   return (
-    // Fits the screen from lg up: the panels scroll internally, the page doesn't.
-    // Narrower than that they stack and the page scrolls as usual.
-    <div className="flex flex-col gap-6 lg:h-full">
-      {/* Row 1: member filter — common control bar for both Jira and repositories. */}
-      <div className="shrink-0">
-        <ScopeBar
-          projectId={projectId}
-          activeMemberId={activeMemberId}
-          onSelectMember={selectMember}
-          scope={scope}
-          onUpdate={update}
-          onReset={reset}
-        />
-      </div>
-      {/* Row 2: the two data domains, side by side. Each carries the sync
-          controls for the integrations that feed it. */}
-      <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-start">
-        <div className={cn("transition-[flex-basis,width]", pane("left", "lg:basis-2/5"))}>
-          <SprintsSection
+    <TabShell tab="data">
+      {/* Fits the screen from lg up: the panels scroll internally, the page
+          doesn't. Narrower than that they stack and the page scrolls as usual. */}
+      <div className="flex flex-col gap-6 lg:h-full">
+        {/* Row 1: member filter — common control bar for both Jira and repositories. */}
+        <div className="shrink-0">
+          <ScopeBar
             projectId={projectId}
             activeMemberId={activeMemberId}
+            onSelectMember={selectMember}
             scope={scope}
-            onToggleSprint={toggleSprint}
-            collapsed={wide === "right"}
-            widthAction={widthAction("left")}
+            onUpdate={update}
+            onReset={reset}
           />
         </div>
-        <div className={cn("transition-[flex-basis,width]", pane("right", "lg:basis-3/5"))}>
-          <ReposSection
-            projectId={projectId}
-            activeMemberId={activeMemberId}
-            scope={scope}
-            onToggleRepo={toggleRepo}
-            collapsed={wide === "left"}
-            widthAction={widthAction("right")}
-          />
+        {/* Row 2: the two data domains, side by side. Each carries the sync
+            controls for the integrations that feed it. */}
+        <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-start">
+          <div className={cn("transition-[flex-basis,width]", pane("left", "lg:basis-2/5"))}>
+            <SprintsSection
+              projectId={projectId}
+              activeMemberId={activeMemberId}
+              scope={scope}
+              onToggleSprint={toggleSprint}
+              collapsed={wide === "right"}
+              widthAction={widthAction("left")}
+            />
+          </div>
+          <div className={cn("transition-[flex-basis,width]", pane("right", "lg:basis-3/5"))}>
+            <ReposSection
+              projectId={projectId}
+              activeMemberId={activeMemberId}
+              scope={scope}
+              onToggleRepo={toggleRepo}
+              collapsed={wide === "left"}
+              widthAction={widthAction("right")}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </TabShell>
   );
 }

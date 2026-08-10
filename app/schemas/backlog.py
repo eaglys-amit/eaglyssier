@@ -23,6 +23,7 @@ class TaskCreateIn(BaseModel):
     story_points: float | None = None
     priority: str | None = None
     sprint_id: int | None = None
+    milestone_id: int | None = None
     parent_id: int | None = None
     # The curated Member; resolved to one of their MemberIdentity rows in this
     # project, because Task.assignee is an identity, not a member.
@@ -45,6 +46,7 @@ class TaskPatchIn(BaseModel):
     story_points: float | None = None
     priority: str | None = None
     sprint_id: int | None = None
+    milestone_id: int | None = None
     parent_id: int | None = None
     assignee_member_id: int | None = None
 

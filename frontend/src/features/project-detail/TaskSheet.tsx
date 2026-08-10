@@ -15,11 +15,18 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime, shortSha } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type { TaskDetail } from "@/types/api";
+import type { Milestone, Task, TaskDetail } from "@/types/api";
 
 /** Slide-over task detail bound to the ?task= search param (works from any tab). */
 export function TaskSheet() {
@@ -93,6 +100,8 @@ export function TaskSheet() {
                 {task.assignee ? <Badge variant="secondary">{task.assignee}</Badge> : null}
                 {task.source === "local" ? <Badge variant="outline">Local</Badge> : null}
               </div>
+
+              <MilestonePicker task={task} />
 
               {/* Where this sits in a breakdown. Without it, a task created from
                   an AI draft loses every trace of the epic it came from. */}
@@ -175,5 +184,63 @@ export function TaskSheet() {
         ) : null}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** Sentinel: Radix Select forbids an empty-string item value. */
+const NO_MILESTONE = "none";
+
+/**
+ * Assign the task to a milestone from wherever it was opened — the board, the
+ * Gantt, a report. The Milestones tab is the other end of the same link; this
+ * is the end you reach while actually looking at the work.
+ */
+function MilestonePicker({ task }: { task: TaskDetail }) {
+  const qc = useQueryClient();
+  const projectId = task.project_id;
+
+  const { data: milestones } = useQuery({
+    queryKey: qk.milestones(projectId),
+    queryFn: () => api.get<Milestone[]>(`/projects/${projectId}/milestones`),
+    enabled: Number.isFinite(projectId),
+  });
+
+  const assign = useMutation({
+    mutationFn: (milestoneId: number | null) =>
+      api.patch<Task>(`/tasks/${task.id}`, { milestone_id: milestoneId }),
+    onSuccess: (_task, milestoneId) => {
+      qc.invalidateQueries({ queryKey: qk.task(task.id) });
+      // Prefix key — sweeps the list, the roadmap and the per-milestone tasks.
+      qc.invalidateQueries({ queryKey: qk.milestones(projectId) });
+      qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      toast.success(milestoneId === null ? "Removed from its milestone" : "Milestone updated");
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not set the milestone"),
+  });
+
+  // Nothing to pick from yet, and no good place here to explain milestones.
+  if (!milestones?.length) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="shrink-0 text-xs text-muted-foreground">Milestone</span>
+      <Select
+        value={task.milestone_id === null ? NO_MILESTONE : String(task.milestone_id)}
+        disabled={assign.isPending}
+        onValueChange={(v) => assign.mutate(v === NO_MILESTONE ? null : Number(v))}
+      >
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_MILESTONE}>None</SelectItem>
+          {milestones.map((m) => (
+            <SelectItem key={m.id} value={String(m.id)}>
+              {m.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

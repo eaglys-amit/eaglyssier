@@ -51,4 +51,15 @@ export const qk = {
   burndown: (id: number, sprintId: number) =>
     ["projects", id, "scrums", "burndown", sprintId] as const,
   velocity: (id: number) => ["projects", id, "scrums", "velocity"] as const,
+  // Milestones. Both read the same tasks the board does, so useBoard's
+  // invalidateAll() sweeps them — a drag on the board moves the roadmap.
+  milestones: (id: number) => ["projects", id, "milestones"] as const,
+  roadmap: (id: number) => ["projects", id, "milestones", "roadmap"] as const,
+  milestoneTasks: (id: number, milestoneId: number) =>
+    ["projects", id, "milestones", milestoneId, "tasks"] as const,
+  generatePreview: (id: number) =>
+    ["projects", id, "milestones", "generate-preview"] as const,
+  // Epic generation rewrites the backlog tree, so it lives under the scrums
+  // subtree that useBoard.invalidateAll() already sweeps.
+  epicPreview: (id: number) => ["projects", id, "scrums", "epic-preview"] as const,
 };

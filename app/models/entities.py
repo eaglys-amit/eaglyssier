@@ -296,17 +296,65 @@ class SprintMemberCapacity(Base, TimestampMixin):
     member: Mapped["Member"] = relationship()
 
 
+class Milestone(Base, TimestampMixin):
+    """A dated goal above the sprint horizon — a release, a launch, a gate.
+
+    Owns no numbers of its own. Progress is a leaf-only story-point rollup of
+    the tasks pointing at it (Task.milestone_id), and the sprints a milestone
+    spans are *derived* from those tasks rather than stored — so moving a task
+    between sprints on the board keeps the roadmap honest without a second
+    write. See app.services.milestones.
+
+    No `source` column, unlike Sprint/Task: no connector owns milestones, they
+    are always created here, and so sync_scoped() does not apply.
+    """
+
+    __tablename__ = "milestones"
+    __table_args__ = (Index("ix_milestone_project_id", "project_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # The roadmap bar's left edge. NULL falls back to the earliest linked
+    # sprint's start, so a bar always has somewhere to begin.
+    start_date: Mapped[date | None] = mapped_column(Date)
+    # The date the forecast is judged against, and the diamond on the bar.
+    target_date: Mapped[date | None] = mapped_column(Date)
+    # planned | in_progress | released | cancelled. Set by hand; distinct from
+    # the derived `health`, which the service computes from points and velocity.
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="planned", server_default="planned"
+    )
+    released_date: Mapped[date | None] = mapped_column(Date)
+    # Roadmap row order, sparse like Task.rank (see tasks_svc.RANK_STEP).
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+    project: Mapped["Project"] = relationship()
+    tasks: Mapped[list["Task"]] = relationship(back_populates="milestone")
+
+
 class Task(Base, TimestampMixin):
     __tablename__ = "tasks"
     __table_args__ = (
         UniqueConstraint("project_id", "external_key", name="uq_task_project_key"),
         Index("ix_task_parent_id", "parent_id"),
+        Index("ix_task_milestone_id", "milestone_id"),
         Index("ix_task_project_sprint_rank", "project_id", "sprint_id", "rank"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     sprint_id: Mapped[int | None] = mapped_column(ForeignKey("sprints.id", ondelete="SET NULL"))
+    # The milestone this work counts toward. SET NULL like sprint_id: deleting
+    # a milestone releases its tasks rather than destroying them.
+    #
+    # _upsert_task in app.services.sync assigns an explicit field list that
+    # does not include this column, so a Jira re-sync preserves the link on a
+    # source='sync' task. Keep it that way.
+    milestone_id: Mapped[int | None] = mapped_column(
+        ForeignKey("milestones.id", ondelete="SET NULL")
+    )
     assignee_identity_id: Mapped[int | None] = mapped_column(
         ForeignKey("member_identities.id", ondelete="SET NULL")
     )
@@ -352,6 +400,7 @@ class Task(Base, TimestampMixin):
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
     sprint: Mapped["Sprint"] = relationship(back_populates="tasks")
+    milestone: Mapped["Milestone | None"] = relationship(back_populates="tasks")
     assignee: Mapped["MemberIdentity"] = relationship()
     parent: Mapped["Task | None"] = relationship(
         back_populates="children", remote_side="Task.id"

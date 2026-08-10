@@ -253,6 +253,8 @@ def task_detail(task_id: int, db: Session = Depends(get_db)):
         hours=round((t.worklog_seconds or 0) / 3600.0, 1),
         assignee=t.assignee.display_name if t.assignee else None,
         sprint=sprint.name if sprint else None,
+        project_id=t.project_id,
+        milestone_id=t.milestone_id,
         commits=[
             TaskCommit(
                 id=c.id,

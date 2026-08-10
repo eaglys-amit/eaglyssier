@@ -474,7 +474,7 @@ function PrTable({ repoId, memberId }: { repoId: number; memberId: number | null
 /** A configured repo paired with its synced row, if it has one yet. */
 type RepoEntry = { fullName: string; provider: string; repo: Repo | null };
 
-/** A repo picked on the Integrations tab that has never been pulled. */
+/** A repo picked under Integrations that has never been pulled. */
 function PendingRepoRow({
   projectId,
   fullName,
@@ -734,8 +734,8 @@ export function ReposSection({
           title="No repositories selected"
           hint={
             gitIntegrations.length
-              ? "Pick repositories on the Integrations tab, then sync them here."
-              : "Connect GitHub or GitLab and pick repositories on the Integrations tab."
+              ? "Pick repositories under Integrations, then sync them here."
+              : "Connect GitHub or GitLab and pick repositories under Integrations."
           }
         />
       ) : (

@@ -2,17 +2,22 @@ import { ArrowLeft, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { cn } from "@/lib/utils";
+
 /**
  * The content column's title bar. Fixed at the same height as the sidebar's
- * brand block (`h-19`) and bordered like it, so the two read as one bar across
+ * header block (`h-19`) and bordered like it, so the two read as one bar across
  * the whole window. Keep it to two lines — a back link *or* a description under
  * the title — or it will outgrow that height.
  *
- * Sticky: it sits inside the scrolling column, so on a long page it pins to the
- * top instead of scrolling away. That needs an opaque background to cover the
- * content passing under it.
+ * Sticky by default: it sits inside the scrolling column, so on a long page it
+ * pins to the top instead of scrolling away. That needs an opaque background to
+ * cover the content passing under it. Pass `sticky={false}` when something else
+ * already owns the top of the column — the project tab strip does, and the
+ * per-tab bar below it scrolls away with the content.
  */
 export function PageHeader({
+  leading,
   backTo,
   backLabel,
   icon: Icon,
@@ -20,7 +25,9 @@ export function PageHeader({
   description,
   badge,
   actions,
+  sticky = true,
 }: {
+  leading?: ReactNode;
   backTo?: string;
   backLabel?: ReactNode;
   icon?: LucideIcon;
@@ -28,9 +35,23 @@ export function PageHeader({
   description?: ReactNode;
   badge?: ReactNode;
   actions?: ReactNode;
+  sticky?: boolean;
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-19 shrink-0 items-center gap-3 border-b bg-background px-6">
+    <header
+      className={cn(
+        "flex h-19 shrink-0 items-center gap-3 border-b bg-background px-6",
+        sticky && "sticky top-0 z-30",
+      )}
+    >
+      {/* Ahead of the title, behind a rule: the brand on the pages that have no
+          sidebar to carry it. */}
+      {leading ? (
+        <>
+          {leading}
+          <div className="h-8 w-px shrink-0 bg-border" />
+        </>
+      ) : null}
       <div className="min-w-0 flex-1">
         {backTo ? (
           <Link

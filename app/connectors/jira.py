@@ -126,10 +126,19 @@ class JiraConnector(IssueTrackerConnector):
         sp_field = self.config.get("story_points_field", "customfield_10016")
         project_key = self.config.get("project_key")
         jql = f"project = {project_key} ORDER BY updated DESC" if project_key else "ORDER BY updated DESC"
+        # The epic-link custom field, for company-managed projects that predate
+        # Jira unifying it onto `parent`. Configurable because its id differs
+        # per site; the default is Jira's classic "Epic Link".
+        epic_field = self.config.get("epic_link_field", "customfield_10014")
         fields = [
             "summary", "description", "issuetype", "status", "assignee",
             "created", "updated", "resolutiondate", "aggregatetimespent",
             "customfield_10020",  # sprint field (Jira default)
+            # Hierarchy: `parent` covers both a subtask's parent and, on
+            # team-managed projects, a story's epic. Without it every synced
+            # subtask lands orphaned and the breakdown tree is flat.
+            "parent",
+            epic_field,
             sp_field,
         ]
         out: list[TaskDTO] = []
@@ -150,7 +159,7 @@ class JiraConnector(IssueTrackerConnector):
                     raise ConnectorError(f"Jira issues failed: {r.status_code} {r.text[:200]}")
                 data = r.json()
                 for issue in data.get("issues", []):
-                    out.append(self._issue_to_dto(issue, sp_field, cat_map))
+                    out.append(self._issue_to_dto(issue, sp_field, cat_map, epic_field))
                 next_token = data.get("nextPageToken")
                 if data.get("isLast") or not next_token or not data.get("issues"):
                     break
@@ -186,7 +195,39 @@ class JiraConnector(IssueTrackerConnector):
                         stamps.append(when)
         return min(stamps) if stamps else None
 
-    def _issue_to_dto(self, issue: dict, sp_field: str, cat_map: dict[str, str] | None = None) -> TaskDTO:
+    @staticmethod
+    def _parent_key(f: dict, epic_field: str) -> str | None:
+        """The issue this one hangs off, as a Jira key.
+
+        Two shapes, because Jira changed how hierarchy is modelled and both are
+        still in the wild:
+
+        * ``parent`` — a subtask's parent everywhere, and on team-managed
+          projects also a story's epic. An object with a ``key``.
+        * the Epic Link custom field — company-managed projects that predate the
+          unification. A bare key string, not an object.
+
+        ``parent`` wins when both are present: it is the modern field and the
+        one Jira keeps current.
+        """
+        parent = f.get("parent")
+        if isinstance(parent, dict) and parent.get("key"):
+            return str(parent["key"])
+        epic = f.get(epic_field)
+        if isinstance(epic, str) and epic.strip():
+            return epic.strip()
+        # Some sites return the epic link as an object too.
+        if isinstance(epic, dict) and epic.get("key"):
+            return str(epic["key"])
+        return None
+
+    def _issue_to_dto(
+        self,
+        issue: dict,
+        sp_field: str,
+        cat_map: dict[str, str] | None = None,
+        epic_field: str = "customfield_10014",
+    ) -> TaskDTO:
         f = issue.get("fields", {})
         status = f.get("status") or {}
         cat_key = (status.get("statusCategory") or {}).get("key", "new")
@@ -214,6 +255,7 @@ class JiraConnector(IssueTrackerConnector):
             status_category=_STATUS_CATEGORY_MAP.get(cat_key, "todo"),
             story_points=f.get(sp_field),
             worklog_seconds=f.get("aggregatetimespent") or 0,
+            parent_external_key=self._parent_key(f, epic_field),
             sprint_external_id=sprint_ext,
             assignee=assignee,
             created_at=_parse_dt(f.get("created")),

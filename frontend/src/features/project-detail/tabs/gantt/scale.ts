@@ -1,4 +1,9 @@
-/** A date→x pixel scale for the Gantt timeline, with month + day header ticks. */
+/**
+ * A date→x pixel scale for the Gantt timeline, with month + day header ticks.
+ *
+ * Shared by two timelines: the Gantt and the Milestones roadmap. Keep it free
+ * of anything specific to either, so a date always lands on the same x in both.
+ */
 export interface GanttScale {
   totalWidth: number;
   pxPerDay: number;

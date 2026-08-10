@@ -1,6 +1,8 @@
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+import { TabShell } from "@/features/project-detail/TabShell";
+
 import { BoardView } from "./scrums/BoardView";
 import { ChartsView } from "./scrums/ChartsView";
 import { DocsView } from "./scrums/DocsView";
@@ -22,32 +24,34 @@ export function ScrumsTab({ projectId }: { projectId: number }) {
   const { view, sprintId, setView, setSprintId } = useScrumParams();
 
   return (
-    <div className="flex flex-col gap-4 lg:h-full">
-      <div className="shrink-0">
-        <Tabs value={view} onValueChange={(v) => setView(v as ScrumView)}>
-          <TabsList variant="line">
-            {SCRUM_VIEWS.map((v) => (
-              <TabsTrigger key={v.key} value={v.key}>
-                <v.icon className="size-3.5" />
-                {v.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
+    <TabShell tab="scrums">
+      <div className="flex flex-col gap-4 lg:h-full">
+        <div className="shrink-0">
+          <Tabs value={view} onValueChange={(v) => setView(v as ScrumView)}>
+            <TabsList variant="line">
+              {SCRUM_VIEWS.map((v) => (
+                <TabsTrigger key={v.key} value={v.key}>
+                  <v.icon className="size-3.5" />
+                  {v.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
 
-      {view === "board" ? (
-        <BoardView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
-      ) : view === "poker" ? (
-        <PokerView projectId={projectId} sprintId={sprintId} />
-      ) : view === "docs" ? (
-        <DocsView projectId={projectId} sprintId={sprintId} />
-      ) : view === "charts" ? (
-        <ChartsView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
-      ) : (
-        <NotYet view={view} />
-      )}
-    </div>
+        {view === "board" ? (
+          <BoardView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
+        ) : view === "poker" ? (
+          <PokerView projectId={projectId} sprintId={sprintId} />
+        ) : view === "docs" ? (
+          <DocsView projectId={projectId} sprintId={sprintId} />
+        ) : view === "charts" ? (
+          <ChartsView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
+        ) : (
+          <NotYet view={view} />
+        )}
+      </div>
+    </TabShell>
   );
 }
 

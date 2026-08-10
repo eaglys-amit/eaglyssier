@@ -39,6 +39,10 @@ class TaskDTO:
     story_points: float | None = None
     worklog_seconds: int = 0
     reopened_count: int = 0
+    # The issue this one hangs off in the tracker: a subtask's parent, or the
+    # epic a story belongs to. Resolved to Task.parent_id in a second pass,
+    # because a parent may be upserted after its child.
+    parent_external_key: str | None = None
     sprint_external_id: str | None = None
     assignee: IdentityDTO | None = None
     created_at: datetime | None = None

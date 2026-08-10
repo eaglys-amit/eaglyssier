@@ -31,6 +31,8 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type { Report, Sprint } from "@/types/api";
 
+import { TabShell } from "@/features/project-detail/TabShell";
+
 type ScopeMode = "project" | "sprints" | "dates";
 
 function GenerateReportCard({ projectId }: { projectId: number }) {
@@ -177,85 +179,87 @@ export function ReportsTab({ projectId }: { projectId: number }) {
   });
 
   return (
-    <div className="space-y-6">
-      <GenerateReportCard projectId={projectId} />
+    <TabShell tab="reports">
+      <div className="space-y-6">
+        <GenerateReportCard projectId={projectId} />
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold tracking-tight">Generated reports</h2>
-        {!reports?.length ? (
-          <EmptyState
-            icon={FileText}
-            title="No reports yet"
-            hint="Generate a report above; it renders to stored HTML and a downloadable PDF."
-          />
-        ) : (
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead className="w-24">Type</TableHead>
-                    <TableHead className="w-32">Status</TableHead>
-                    <TableHead className="w-40">Generated</TableHead>
-                    <TableHead className="w-44 text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reports.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="max-w-sm">
-                        <div className="truncate font-medium">{r.title}</div>
-                        {r.status === "failed" && r.error ? (
-                          <div className="truncate text-xs text-destructive">{r.error}</div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{r.report_type}</TableCell>
-                      <TableCell>{reportBadge(r.status)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {formatDateTime(r.generated_at)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {r.html_url ? (
-                            <Button asChild variant="ghost" size="sm">
-                              <a href={r.html_url} target="_blank" rel="noreferrer">
-                                <ExternalLink className="size-3.5" /> View
-                              </a>
-                            </Button>
-                          ) : null}
-                          {r.pdf_url ? (
-                            <Button asChild variant="ghost" size="sm">
-                              <a href={r.pdf_url}>
-                                <Download className="size-3.5" /> PDF
-                              </a>
-                            </Button>
-                          ) : null}
-                          <ConfirmDialog
-                            trigger={
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-8 text-muted-foreground hover:text-destructive"
-                              >
-                                <Trash2 className="size-4" />
-                                <span className="sr-only">Delete report</span>
-                              </Button>
-                            }
-                            title={`Delete “${r.title}”?`}
-                            description="Removes the report and its stored HTML/PDF."
-                            onConfirm={() => remove.mutate(r.id)}
-                          />
-                        </div>
-                      </TableCell>
+        <section>
+          <h2 className="mb-3 text-sm font-semibold tracking-tight">Generated reports</h2>
+          {!reports?.length ? (
+            <EmptyState
+              icon={FileText}
+              title="No reports yet"
+              hint="Generate a report above; it renders to stored HTML and a downloadable PDF."
+            />
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead className="w-24">Type</TableHead>
+                      <TableHead className="w-32">Status</TableHead>
+                      <TableHead className="w-40">Generated</TableHead>
+                      <TableHead className="w-44 text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-      </section>
-    </div>
+                  </TableHeader>
+                  <TableBody>
+                    {reports.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="max-w-sm">
+                          <div className="truncate font-medium">{r.title}</div>
+                          {r.status === "failed" && r.error ? (
+                            <div className="truncate text-xs text-destructive">{r.error}</div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{r.report_type}</TableCell>
+                        <TableCell>{reportBadge(r.status)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDateTime(r.generated_at)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            {r.html_url ? (
+                              <Button asChild variant="ghost" size="sm">
+                                <a href={r.html_url} target="_blank" rel="noreferrer">
+                                  <ExternalLink className="size-3.5" /> View
+                                </a>
+                              </Button>
+                            ) : null}
+                            {r.pdf_url ? (
+                              <Button asChild variant="ghost" size="sm">
+                                <a href={r.pdf_url}>
+                                  <Download className="size-3.5" /> PDF
+                                </a>
+                              </Button>
+                            ) : null}
+                            <ConfirmDialog
+                              trigger={
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="size-4" />
+                                  <span className="sr-only">Delete report</span>
+                                </Button>
+                              }
+                              title={`Delete “${r.title}”?`}
+                              description="Removes the report and its stored HTML/PDF."
+                              onConfirm={() => remove.mutate(r.id)}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </section>
+      </div>
+    </TabShell>
   );
 }

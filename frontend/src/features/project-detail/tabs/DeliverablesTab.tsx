@@ -19,7 +19,9 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type { Deliverables, ProjectDetail } from "@/types/api";
+import type { Deliverables } from "@/types/api";
+
+import { TabShell } from "@/features/project-detail/TabShell";
 
 function deliverableStatusBadge(status: string) {
   switch (status) {
@@ -32,12 +34,7 @@ function deliverableStatusBadge(status: string) {
   }
 }
 
-export function DeliverablesTab({
-  projectId,
-}: {
-  projectId: number;
-  project: ProjectDetail;
-}) {
+export function DeliverablesTab({ projectId }: { projectId: number }) {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: qk.deliverables(projectId),
@@ -53,78 +50,81 @@ export function DeliverablesTab({
   const running = data?.status === "running";
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+    <TabShell
+      tab="deliverables"
+      actions={
+        <>
           {data ? jobBadge(data.status, { none: "Not generated" }) : null}
           {data?.generated_at ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="hidden text-xs text-muted-foreground lg:inline">
               {formatDateTime(data.generated_at)}
               {data.model ? ` · ${data.model}` : ""}
             </span>
           ) : null}
-        </div>
-        <Button onClick={() => generate.mutate()} disabled={running || generate.isPending}>
-          <Sparkles className="size-4" />
-          {running ? "Generating…" : "Generate deliverables"}
-        </Button>
-      </div>
+          <Button size="sm" onClick={() => generate.mutate()} disabled={running || generate.isPending}>
+            <Sparkles className="size-4" />
+            {running ? "Generating…" : "Generate deliverables"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {data?.status === "failed" && data.error ? <ErrorAlert message={data.error} /> : null}
 
-      {data?.status === "failed" && data.error ? <ErrorAlert message={data.error} /> : null}
-
-      {!data?.items.length ? (
-        <EmptyState
-          icon={Package}
-          title="No deliverables yet"
-          hint="Deliverables are inferred by the LLM from completed tasks and repository summaries. Manual/seeded rows are kept on regeneration."
-        />
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Deliverable</TableHead>
-                  <TableHead className="w-32">Status</TableHead>
-                  <TableHead className="w-56">Linked tasks</TableHead>
-                  <TableHead className="w-20">Source</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.items.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell className="max-w-md">
-                      <div className="font-medium">{d.name}</div>
-                      {d.description ? (
-                        <div className="mt-0.5 text-xs text-muted-foreground">{d.description}</div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>{deliverableStatusBadge(d.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {d.linked_task_keys.length ? (
-                          d.linked_task_keys.map((k) => (
-                            <Badge key={k} variant="outline" className="font-mono text-xs">
-                              {k}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={d.source === "ai" ? "default" : "secondary"}>
-                        {d.source === "ai" ? "AI" : "Manual"}
-                      </Badge>
-                    </TableCell>
+        {!data?.items.length ? (
+          <EmptyState
+            icon={Package}
+            title="No deliverables yet"
+            hint="Deliverables are inferred by the LLM from completed tasks and repository summaries. Manual/seeded rows are kept on regeneration."
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Deliverable</TableHead>
+                    <TableHead className="w-32">Status</TableHead>
+                    <TableHead className="w-56">Linked tasks</TableHead>
+                    <TableHead className="w-20">Source</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+                </TableHeader>
+                <TableBody>
+                  {data.items.map((d) => (
+                    <TableRow key={d.id}>
+                      <TableCell className="max-w-md">
+                        <div className="font-medium">{d.name}</div>
+                        {d.description ? (
+                          <div className="mt-0.5 text-xs text-muted-foreground">{d.description}</div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>{deliverableStatusBadge(d.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {d.linked_task_keys.length ? (
+                            d.linked_task_keys.map((k) => (
+                              <Badge key={k} variant="outline" className="font-mono text-xs">
+                                {k}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={d.source === "ai" ? "default" : "secondary"}>
+                          {d.source === "ai" ? "AI" : "Manual"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </TabShell>
   );
 }

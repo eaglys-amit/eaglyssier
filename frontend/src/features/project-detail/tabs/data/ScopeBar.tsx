@@ -128,7 +128,7 @@ export function ScopeBar({
               to={`/projects/${projectId}/members`}
               className="text-primary underline-offset-2 hover:underline"
             >
-              map them on the Members tab
+              map them under Members
             </Link>
             .
           </>

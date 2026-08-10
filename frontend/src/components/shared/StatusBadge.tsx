@@ -1,7 +1,13 @@
 import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { JobStatus, ReportStatus, StatusCategory, SyncRunStatus } from "@/types/api";
+import type {
+  JobStatus,
+  MilestoneHealth,
+  ReportStatus,
+  StatusCategory,
+  SyncRunStatus,
+} from "@/types/api";
 
 type Variant = "success" | "running" | "failed" | "neutral" | "accent" | "warning";
 
@@ -83,6 +89,26 @@ export function reportBadge(status: ReportStatus) {
       return <StatusBadge variant="success" label="Ready" />;
     case "failed":
       return <StatusBadge variant="failed" label="Failed" />;
+  }
+}
+
+/**
+ * A milestone's derived health. `unknown` is deliberately neutral, not green:
+ * the server returns it when there's nothing linked, nothing estimated, or no
+ * velocity to project from, and none of those are good news.
+ */
+export function milestoneHealthBadge(health: MilestoneHealth) {
+  switch (health) {
+    case "complete":
+      return <StatusBadge variant="success" label="Complete" />;
+    case "on_track":
+      return <StatusBadge variant="running" label="On track" />;
+    case "at_risk":
+      return <StatusBadge variant="warning" label="At risk" />;
+    case "overdue":
+      return <StatusBadge variant="failed" label="Overdue" />;
+    default:
+      return <StatusBadge variant="neutral" label="No forecast" />;
   }
 }
 

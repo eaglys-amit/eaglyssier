@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+import { BrandLink } from "@/components/layout/BrandLink";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
@@ -82,7 +84,7 @@ function NewProjectDialog() {
           <DialogHeader>
             <DialogTitle>New project</DialogTitle>
             <DialogDescription>
-              Create a project, then connect Jira/GitHub/GitLab from its Integrations tab.
+              Create a project, then connect Jira/GitHub/GitLab under its Integrations section.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -128,11 +130,19 @@ export function ProjectsPage() {
   return (
     <>
       <PageHeader
+        leading={<BrandLink />}
         title="Projects"
         description="Agile project reports from Jira, GitHub, and GitLab data."
-        actions={<NewProjectDialog />}
+        actions={<ThemeToggle />}
       />
       <div className="p-6">
+      {/* The empty state carries its own create button, so the toolbar steps
+          aside for it. */}
+      {isPending || projects?.length ? (
+        <div className="mb-4 flex justify-end">
+          <NewProjectDialog />
+        </div>
+      ) : null}
       {isPending ? (
         <TableSkeleton />
       ) : !projects?.length ? (

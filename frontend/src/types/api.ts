@@ -162,6 +162,8 @@ export interface Task {
   status_category: StatusCategory;
   story_points: number | null;
   sprint_id: number | null;
+  /** The milestone this counts toward. Sync never writes it, so it survives a re-sync. */
+  milestone_id: number | null;
   source: EntitySource;
   parent_id: number | null;
   rank: number;
@@ -200,6 +202,8 @@ export interface TaskDetail {
   hours: number;
   assignee: string | null;
   sprint: string | null;
+  project_id: number;
+  milestone_id: number | null;
   commits: TaskCommit[];
 }
 
@@ -564,6 +568,7 @@ export interface TaskCreateIn {
   story_points?: number | null;
   priority?: string | null;
   sprint_id?: number | null;
+  milestone_id?: number | null;
   parent_id?: number | null;
   assignee_member_id?: number | null;
 }
@@ -1008,4 +1013,225 @@ export interface PokerCandidates {
   in_sprints: PokerCandidate[];
   /** Have points, but only because an AI breakdown proposed them. */
   proposed: PokerCandidate[];
+}
+
+// ------------------------------------------------------------- milestones
+
+/** Set by hand. Distinct from the derived `health` below. */
+export type MilestoneState = "planned" | "in_progress" | "released" | "cancelled";
+
+/** Derived on read. `unknown` wherever the data can't support a verdict. */
+export type MilestoneHealth =
+  | "on_track"
+  | "at_risk"
+  | "overdue"
+  | "complete"
+  | "unknown";
+
+/**
+ * A sprint a milestone has work in. Derived from the milestone's leaf tasks,
+ * never stored — so moving a task on the board updates this with no second write.
+ */
+export interface MilestoneSprintRef {
+  sprint_id: number;
+  name: string;
+  state: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  points_in_milestone: number;
+}
+
+export interface Milestone {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  /** Falls back to the earliest linked sprint's start when unset. */
+  start_date: string | null;
+  target_date: string | null;
+  state: MilestoneState;
+  rank: number;
+
+  /** Rollup over leaf tasks only — a container's points are its children's. */
+  total_points: number;
+  completed_points: number;
+  remaining_points: number;
+  total_tasks: number;
+  completed_tasks: number;
+  unestimated_tasks: number;
+  /** 0..1. Points-based, falling back to the task count when nothing is estimated. */
+  progress: number;
+
+  sprints: MilestoneSprintRef[];
+
+  /** null when velocity is 0 or nothing remains — an honest blank, not a guess. */
+  forecast_date: string | null;
+  /** forecast_date - target_date in days. Negative = ahead of the date. */
+  days_late: number | null;
+  health: MilestoneHealth;
+}
+
+/** A sprint band on the roadmap lane. Only sprints with both dates appear. */
+export interface RoadmapSprintBand {
+  sprint_id: number;
+  name: string;
+  state: string | null;
+  start_date: string;
+  end_date: string;
+}
+
+export interface Roadmap {
+  milestones: Milestone[];
+  sprints: RoadmapSprintBand[];
+  range_start: string | null;
+  range_end: string | null;
+  /** Echoed so the UI can explain the forecast rather than just assert it. */
+  velocity_rolling3: number;
+  velocity_average: number;
+  sprint_length_days: number;
+}
+
+export interface MilestoneCreateIn {
+  name: string;
+  description?: string | null;
+  start_date?: string | null;
+  target_date?: string | null;
+  state?: MilestoneState;
+}
+
+/** PATCH — omitted keys are left alone, null clears the field. */
+export type MilestonePatchIn = Partial<MilestoneCreateIn> & {
+  released_date?: string | null;
+  rank?: number;
+};
+
+/** One leaf a proposal would claim, and whether it actually can. */
+export interface GeneratedTaskRef {
+  task_id: number;
+  key: string;
+  title: string;
+  story_points: number | null;
+  sprint_name: string | null;
+  /** 'skip' means some other milestone already holds it. */
+  action: "link" | "skip";
+  held_by: string | null;
+}
+
+/**
+ * A milestone the generator proposes, derived from one top-level epic.
+ * `mode: "top_up"` means a previous run already made this milestone and the
+ * proposal would only add newly-created leaves to it.
+ */
+export interface GeneratedMilestone {
+  source_task_id: number;
+  source_key: string;
+  name: string;
+  start_date: string | null;
+  target_date: string | null;
+  sprint_names: string[];
+  tasks: GeneratedTaskRef[];
+  link_count: number;
+  skip_count: number;
+  total_points: number;
+  mode: "create" | "top_up";
+  existing_milestone_id: number | null;
+  /** Non-null means it can't be applied; the string says why. */
+  conflict: string | null;
+}
+
+export interface GeneratePreview {
+  strategy: string;
+  proposals: GeneratedMilestone[];
+  ready_count: number;
+  create_count: number;
+  top_up_count: number;
+  total_link_count: number;
+  total_skip_count: number;
+}
+
+export interface GenerateResult {
+  created: number;
+  updated: number;
+  linked: number;
+  skipped: number;
+  milestones: Milestone[];
+}
+
+// -------------------------------------------------- epic generation
+
+/** One task a proposed epic would take in. */
+export interface EpicMemberRef {
+  task_id: number;
+  key: string;
+  title: string;
+  story_points: number | null;
+  sprint_name: string | null;
+  source: EntitySource;
+  action: "group" | "skip";
+  reason: string | null;
+}
+
+/** A group read out of the team's own PBR/PBI task numbering. */
+export interface EpicProposal {
+  group_key: string;
+  name: string;
+  kind: "pbr" | "pbi";
+  members: EpicMemberRef[];
+  member_count: number;
+  skip_count: number;
+  total_points: number;
+  sprint_names: string[];
+  start_date: string | null;
+  end_date: string | null;
+  mode: "create" | "top_up";
+  existing_task_id: number | null;
+  conflict: string | null;
+}
+
+export interface EpicPreview {
+  proposals: EpicProposal[];
+  ready_count: number;
+  create_count: number;
+  top_up_count: number;
+  total_member_count: number;
+  /** Tasks whose titles carry no recognisable number — shown, never hidden. */
+  ungrouped: EpicMemberRef[];
+  needs_group_count: number;
+  coverage_pct: number;
+}
+
+export interface EpicGenerateResult {
+  created: number;
+  updated: number;
+  grouped: number;
+  skipped: number;
+  epic_task_ids: number[];
+}
+
+export interface EpicUngroupResult {
+  released: number;
+  deleted: boolean;
+}
+
+/** A group that can be named: not yet applied, or an epic that already exists. */
+export interface NameableGroup {
+  group_key: string;
+  current_name: string;
+  member_count: number;
+  /** Set when an epic already exists for this key — a rename, not a create. */
+  existing_task_id: number | null;
+}
+
+export interface EpicNameables {
+  groups: NameableGroup[];
+}
+
+/** Suggested names by group_key. Advisory — every one stays editable. */
+export interface EpicNames {
+  names: Record<string, string>;
+  model: string | null;
+}
+
+export interface EpicRenameResult {
+  renamed: number;
 }

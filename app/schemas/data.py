@@ -35,6 +35,9 @@ class TaskOut(ApiModel):
     status_category: str
     story_points: float | None
     sprint_id: int | None
+    # The milestone this counts toward, or None. Sync never writes it, so it
+    # survives a re-sync on a connector-owned task.
+    milestone_id: int | None = None
     source: str = "sync"  # 'sync' | 'local'
     # ai | poker | manual | None (connector-supplied)
     estimate_source: str | None = None
@@ -74,6 +77,10 @@ class TaskDetail(BaseModel):
     hours: float
     assignee: str | None
     sprint: str | None
+    # Both needed by the sheet's milestone picker: the id to select, the
+    # project to list the options from.
+    project_id: int
+    milestone_id: int | None = None
     commits: list[TaskCommit] = []
 
 

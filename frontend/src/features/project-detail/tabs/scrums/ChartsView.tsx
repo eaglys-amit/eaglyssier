@@ -26,8 +26,9 @@ import { formatDate, formatPoints } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type { BacklogBoard, Burndown, SnapshotOut, Velocity } from "@/types/api";
 
+import { ChartFrame, LegendKey } from "@/components/shared/ChartFrame";
+
 import { BurndownChart } from "./BurndownChart";
-import { ChartFrame, LegendKey } from "./ChartFrame";
 import { VelocityChart } from "./VelocityChart";
 
 /**
