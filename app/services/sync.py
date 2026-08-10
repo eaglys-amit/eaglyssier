@@ -239,19 +239,26 @@ def _sync_issue_tracker(
     db.flush()
 
     n_tasks = 0
+    n_adopted = 0
     # Parenting is a second pass: a child can arrive before its parent, so the
     # target row may not exist yet on the first sync.
     parent_keys: dict[int, str] = {}
     for dto in connector.fetch_tasks():
-        task = _upsert_task(db, integration, dto, sprint_by_ext)
+        task, adopted = _upsert_task(db, integration, dto, sprint_by_ext)
         if dto.parent_external_key:
             parent_keys[task.id] = dto.parent_external_key
         n_tasks += 1
+        n_adopted += adopted
     db.flush()
 
     n_parented = _link_parents(db, project_id, parent_keys)
     db.flush()
-    return {"sprints": n_sprints, "tasks": n_tasks, "parented": n_parented}
+    return {
+        "sprints": n_sprints,
+        "tasks": n_tasks,
+        "parented": n_parented,
+        "adopted": n_adopted,
+    }
 
 
 def _link_parents(db: Session, project_id: int, parent_keys: dict[int, str]) -> int:
@@ -332,19 +339,37 @@ def _upsert_sprint(db: Session, project_id: int, dto: SprintDTO) -> Sprint:
 
 def _upsert_task(
     db: Session, integration: Integration, dto: TaskDTO, sprint_by_ext: dict[str, Sprint]
-) -> Task:
+) -> tuple[Task, bool]:
+    """Upsert one tracker issue. Returns the row and whether it was adopted.
+
+    "Adopted" means the row already existed as a locally-planned task that had
+    been linked to this key by hand — worth counting separately on the SyncRun,
+    since it is the moment a draft stops being a draft.
+    """
     project_id = integration.project_id
-    # As in _upsert_sprint, but the stakes are higher here: the update below
-    # reassigns sprint_id and story_points, so without the source guard a
-    # colliding local task would be yanked out of the sprint a user planned it
-    # into and have its estimate overwritten.
+    # Matched on the key alone, unlike _upsert_sprint, which also filters on
+    # source == 'sync'. A local task only carries a key because someone pasted
+    # one in after creating the issue by hand (backlog.link_external_key), and
+    # that paste is a request to be adopted: the row planned, grouped and
+    # estimated here becomes the tracker's row, rather than the tracker adding a
+    # second row for the same work and doubling every points sum. At most one
+    # row can match — uq_task_project_key.
     task = db.execute(
         select(Task).where(
             Task.project_id == project_id,
             Task.external_key == dto.external_key,
-            Task.source == "sync",
         )
     ).scalar_one_or_none()
+    if task is not None and task.source == "local":
+        log.info(
+            "adopting local task %s as %s: the tracker now owns it",
+            task.id,
+            dto.external_key,
+        )
+        task.source = "sync"
+        adopted = True
+    else:
+        adopted = False
     if task is None:
         task = Task(
             project_id=project_id,
@@ -365,7 +390,17 @@ def _upsert_task(
     task.issue_type = dto.issue_type
     task.status = dto.status
     task.status_category = StatusCategory(dto.status_category)
-    task.story_points = dto.story_points
+    if dto.story_points is not None:
+        task.story_points = dto.story_points
+        task.estimate_source = None  # connector-owned now; see TaskOut
+    elif task.estimate_source not in ("poker", "manual"):
+        task.story_points = None
+    # else: the tracker has no number and ours was settled by people — a poker
+    # round or a hand edit. Keep it. This is what makes adoption worth doing:
+    # teams here estimate in the app and rarely fill Jira's points field, so
+    # overwriting unconditionally would blank the agreed estimate on the
+    # adopting sync and again on every sync after it. The cost is that clearing
+    # the field in Jira no longer clears a settled estimate here.
     task.worklog_seconds = dto.worklog_seconds or 0
     task.reopened_count = dto.reopened_count
     task.assignee_identity_id = assignee.id if assignee else None
@@ -375,7 +410,7 @@ def _upsert_task(
     task.started_at_src = dto.started_at
     task.resolved_at_src = dto.resolved_at
     db.flush()
-    return task
+    return task, adopted
 
 
 # ------------------------------------------------------------------------- git

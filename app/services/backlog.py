@@ -17,6 +17,7 @@ Two rules make that work, and both are easy to break:
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -30,12 +31,19 @@ from app.schemas.backlog import (
     BulkMoveIn,
     RankMoveIn,
     TaskCreateIn,
+    TaskLinkKeyIn,
     TaskNodeOut,
     TaskPatchIn,
 )
 from app.schemas.data import TaskOut
 from app.services import tasks as tasks_svc
 from app.services.capacity import build_project_capacity
+
+# A tracker issue key: project prefix, hyphen, number ("ABC-123", "PBR_2-45").
+# Loose on purpose — this only has to reject prose someone pasted into the wrong
+# box. Whether the issue actually exists is settled by the next sync adopting it
+# or not, which no regex could tell us.
+_KEY_SHAPE = re.compile(r"[A-Z][A-Z0-9_]*-\d+")
 
 
 def _now() -> datetime:
@@ -176,6 +184,57 @@ def patch_task(db: Session, task: Task, data: TaskPatchIn) -> Task:
     for key, value in fields.items():
         setattr(task, key, value)
 
+    task.updated_at_src = _now()
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def link_external_key(db: Session, task: Task, data: TaskLinkKeyIn) -> Task:
+    """Point a local task at the tracker issue an engineer created from it.
+
+    This is the hand-off at the end of the planning flow: a task drafted from a
+    document, grouped under an epic here and estimated in poker gets copied into
+    Jira by hand, and the key that comes back is pasted in here. The row stays
+    ``source='local'`` — sync still won't touch it — until the next run finds an
+    issue with this key and *adopts* it (see ``sync._upsert_task``), at which
+    point one row carries the work from draft to tracker.
+
+    The alternative, letting the synced issue arrive as a second row, would
+    double every story-point sum in the app; see invariant #1 in
+    app.services.tasks.
+
+    Passing ``external_key=None`` undoes a typo.
+    """
+    if task.source != "local":
+        raise HTTPException(422, "This task already comes from the tracker.")
+
+    raw = (data.external_key or "").strip().upper()
+    if not raw:
+        task.external_key = None
+        task.updated_at_src = _now()
+        db.commit()
+        db.refresh(task)
+        return task
+
+    if not _KEY_SHAPE.fullmatch(raw):
+        raise HTTPException(422, f"{raw!r} is not an issue key — expected something like ABC-123.")
+
+    # Pre-flight the uniqueness the DB would enforce anyway (uq_task_project_key),
+    # so a duplicate paste reads as a 409 rather than an IntegrityError 500.
+    clash = db.execute(
+        select(Task).where(
+            Task.project_id == task.project_id,
+            Task.external_key == raw,
+            Task.id != task.id,
+        )
+    ).scalar_one_or_none()
+    if clash is not None:
+        # Not task_label() here: it renders the key, which is the value we're
+        # rejecting, so the message would name it twice and locate nothing.
+        raise HTTPException(409, f"{raw} is already linked to task #{clash.id}.")
+
+    task.external_key = raw
     task.updated_at_src = _now()
     db.commit()
     db.refresh(task)

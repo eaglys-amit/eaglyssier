@@ -577,6 +577,18 @@ export interface TaskCreateIn {
 export type TaskPatchIn = Partial<TaskCreateIn>;
 
 /**
+ * POST /tasks/:id/jira-key — hand a local task over to the tracker.
+ *
+ * Not part of TaskPatchIn: the key is a state transition, not an edit. The task
+ * stays local until a sync finds the issue and adopts the row, which is what
+ * keeps the estimate and epic grouping instead of a duplicate arriving. Null
+ * undoes a typo.
+ */
+export interface TaskLinkKeyIn {
+  external_key: string | null;
+}
+
+/**
  * POST /tasks/:id/rank — positional, never a rank value. `after_task_id: null`
  * means "first in the target list"; the server assigns the actual rank.
  */

@@ -12,6 +12,7 @@ from app.schemas.backlog import (
     BulkMoveIn,
     RankMoveIn,
     TaskCreateIn,
+    TaskLinkKeyIn,
     TaskNodeOut,
     TaskPatchIn,
 )
@@ -57,6 +58,19 @@ def patch_task(task_id: int, body: TaskPatchIn, db: Session = Depends(get_db)):
     """
     task = get_or_404(db, Task, task_id, "Task")
     return backlog_svc.task_out(backlog_svc.patch_task(db, task, body))
+
+
+@router.post("/tasks/{task_id}/jira-key", response_model=TaskOut)
+def link_jira_key(task_id: int, body: TaskLinkKeyIn, db: Session = Depends(get_db)):
+    """Link a local task to the tracker issue an engineer created from it.
+
+    The row stays local until a sync finds that key and adopts it, so the
+    estimate and the epic/milestone grouping made here survive the hand-off
+    instead of arriving back as a second, unstructured row. Send a null key to
+    undo a typo. 409 if another task in the project already claims the key.
+    """
+    task = get_or_404(db, Task, task_id, "Task")
+    return backlog_svc.task_out(backlog_svc.link_external_key(db, task, body))
 
 
 @router.delete("/tasks/{task_id}", status_code=204)

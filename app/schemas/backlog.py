@@ -51,6 +51,19 @@ class TaskPatchIn(BaseModel):
     assignee_member_id: int | None = None
 
 
+class TaskLinkKeyIn(BaseModel):
+    """The tracker key an engineer got back after creating the issue by hand.
+
+    Its own request body rather than a field on TaskPatchIn: setting this hands
+    the row over to the connector (see backlog.link_external_key), which is a
+    state transition, not an edit. On the patch model every task dialog would
+    be able to trip it by accident.
+
+    None clears a mistyped key, putting the task back to purely local.
+    """
+    external_key: str | None = None
+
+
 class RankMoveIn(BaseModel):
     """Positional move. The server owns the rank value.
 

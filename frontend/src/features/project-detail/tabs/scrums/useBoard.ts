@@ -9,6 +9,7 @@ import type {
   RankMoveIn,
   Task,
   TaskCreateIn,
+  TaskLinkKeyIn,
   TaskPatchIn,
 } from "@/types/api";
 
@@ -73,6 +74,22 @@ export function useBoard(projectId: number) {
     onError: (err: ApiError) => toast.error(err.detail || "Could not save the task"),
   });
 
+  const linkKey = useMutation({
+    mutationFn: ({ taskId, body }: { taskId: number; body: TaskLinkKeyIn }) =>
+      api.post<Task>(`/tasks/${taskId}/jira-key`, body),
+    onSuccess: (task) => {
+      invalidateAll();
+      toast.success(
+        task.external_key
+          ? `Linked to ${task.external_key} — the next sync will adopt it`
+          : "Tracker link removed",
+      );
+    },
+    // 409 (key already linked) and 422 (malformed) both arrive with a usable
+    // message from the server, so surface it rather than a generic fallback.
+    onError: (err: ApiError) => toast.error(err.detail || "Could not link the task"),
+  });
+
   const deleteTask = useMutation({
     mutationFn: ({ taskId, cascade }: { taskId: number; cascade?: boolean }) =>
       api.delete(`/tasks/${taskId}${cascade ? "?cascade=true" : ""}`),
@@ -111,10 +128,14 @@ export function useBoard(projectId: number) {
   return {
     board: board.data,
     isPending: board.isPending,
+    // Distinct from isPending: true on a background refetch, when the board is
+    // already on screen. Drives the refresh button's spinner.
+    isFetching: board.isFetching,
     error: board.error,
     createTask,
     createSubtask,
     patchTask,
+    linkKey,
     deleteTask,
     moveTask,
     bulkMove,
