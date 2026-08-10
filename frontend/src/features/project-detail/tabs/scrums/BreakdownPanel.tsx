@@ -9,7 +9,6 @@ import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { jobBadge } from "@/components/shared/StatusBadge";
 import { Spinner } from "@/components/shared/Spinner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
@@ -17,6 +16,7 @@ import { formatPoints } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type { BreakdownAcceptOut, Deck, TaskBreakdown } from "@/types/api";
 
+import { DocumentPicker } from "../documents/DocumentPicker";
 import { useReferenceFiles } from "../documents/useReferenceFiles";
 import {
   acceptedIds,
@@ -209,22 +209,22 @@ export function BreakdownPanel({
                   <Link to={`/projects/${projectId}/documents`}>Manage</Link>
                 </Button>
               </div>
-              {usable.map((f) => (
-                <label key={f.id} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={selected.includes(f.id)}
-                    onCheckedChange={(v) =>
-                      setSelected((s) =>
-                        v === true ? [...s, f.id] : s.filter((x) => x !== f.id),
-                      )
-                    }
-                  />
-                  <span className="truncate">{f.filename}</span>
-                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                    {f.char_count.toLocaleString()} chars
-                  </span>
-                </label>
-              ))}
+              <DocumentPicker
+                projectId={projectId}
+                files={usable}
+                selected={selected}
+                onChange={setSelected}
+              />
+              {selected.length ? (
+                <p className="pt-1 text-xs text-muted-foreground">
+                  {selected.length} selected ·{" "}
+                  {usable
+                    .filter((f) => selected.includes(f.id))
+                    .reduce((sum, f) => sum + f.char_count, 0)
+                    .toLocaleString()}{" "}
+                  characters of context
+                </p>
+              ) : null}
             </div>
           )}
 

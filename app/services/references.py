@@ -31,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import ReferenceFile
+from app.models import ReferenceFile, ReferenceFolder
 from app.storage import rustfs
 
 log = logging.getLogger("app.services.references")
@@ -229,6 +229,175 @@ def extract(kind: str, data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+# --------------------------------------------------------------------- folders
+#
+# The tree is an adjacency list (ReferenceFolder.parent_id). Every guard below
+# works on the project's full folder list, loaded once: these trees are small
+# enough that one SELECT beats a recursive CTE per check, and it keeps the cycle
+# and sibling-name rules readable.
+
+
+class FolderError(HTTPException):
+    """An invalid folder operation — bad name, bad parent, or a cycle."""
+
+
+def list_folders(db: Session, project_id: int) -> list[ReferenceFolder]:
+    """Every folder in the project, flat. The caller nests them."""
+    return list(
+        db.execute(
+            select(ReferenceFolder)
+            .where(ReferenceFolder.project_id == project_id)
+            .order_by(ReferenceFolder.name)
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _clean_name(name: str) -> str:
+    """Collapse whitespace and strip path separators.
+
+    Separators are stripped rather than rejected because a user pasting
+    "specs/api" means one folder named that, not a silent second level — and
+    letting them through would make a folder name that reads like a path it
+    isn't. Storage keys don't use folder names at all (see store_reference), so
+    this is purely about the name being honest.
+    """
+    cleaned = re.sub(r"\s+", " ", name.replace("/", " ").replace("\\", " ")).strip()
+    if not cleaned:
+        raise FolderError(422, "A folder needs a name.")
+    return cleaned[:255]
+
+
+def get_folder_or_404(db: Session, project_id: int, folder_id: int) -> ReferenceFolder:
+    row = db.get(ReferenceFolder, folder_id)
+    if row is None or row.project_id != project_id:
+        raise FolderError(404, "Folder not found in this project")
+    return row
+
+
+def _assert_name_free(
+    db: Session,
+    project_id: int,
+    *,
+    parent_id: int | None,
+    name: str,
+    exclude_id: int | None = None,
+) -> None:
+    """Reject a duplicate sibling name, case-insensitively.
+
+    Enforced here rather than as a UniqueConstraint: Postgres treats NULLs as
+    distinct, so the constraint would not cover top-level folders, which is
+    where a duplicate is most likely to be created by accident.
+    """
+    clash = next(
+        (
+            f
+            for f in list_folders(db, project_id)
+            if f.parent_id == parent_id
+            and f.id != exclude_id
+            and f.name.casefold() == name.casefold()
+        ),
+        None,
+    )
+    if clash is not None:
+        where = "this folder" if parent_id else "the top level"
+        raise FolderError(409, f'"{clash.name}" already exists in {where}.')
+
+
+def _descendant_ids(folders: list[ReferenceFolder], root_id: int) -> set[int]:
+    """root_id plus every folder beneath it."""
+    children: dict[int | None, list[int]] = {}
+    for f in folders:
+        children.setdefault(f.parent_id, []).append(f.id)
+    seen = {root_id}
+    stack = [root_id]
+    while stack:
+        for child in children.get(stack.pop(), []):
+            if child not in seen:
+                seen.add(child)
+                stack.append(child)
+    return seen
+
+
+def create_folder(
+    db: Session, project_id: int, *, name: str, parent_id: int | None = None
+) -> ReferenceFolder:
+    clean = _clean_name(name)
+    if parent_id is not None:
+        get_folder_or_404(db, project_id, parent_id)
+    _assert_name_free(db, project_id, parent_id=parent_id, name=clean)
+    row = ReferenceFolder(project_id=project_id, parent_id=parent_id, name=clean)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def update_folder(
+    db: Session,
+    project_id: int,
+    folder_id: int,
+    *,
+    name: str | None = None,
+    parent_id: int | None = None,
+    reparent: bool = False,
+) -> ReferenceFolder:
+    """Rename and/or move a folder.
+
+    ``reparent`` distinguishes "leave the parent alone" from "move to the root",
+    which ``parent_id=None`` alone cannot express.
+    """
+    row = get_folder_or_404(db, project_id, folder_id)
+    target_parent = parent_id if reparent else row.parent_id
+
+    if reparent and parent_id is not None:
+        get_folder_or_404(db, project_id, parent_id)
+        # A folder can't be moved inside itself or its own subtree: the rows
+        # would survive but become unreachable from the root, invisible in
+        # every view and impossible to move back.
+        if parent_id in _descendant_ids(list_folders(db, project_id), folder_id):
+            raise FolderError(409, "A folder can't be moved into itself.")
+
+    clean = _clean_name(name) if name is not None else row.name
+    _assert_name_free(
+        db, project_id, parent_id=target_parent, name=clean, exclude_id=folder_id
+    )
+
+    row.name = clean
+    row.parent_id = target_parent
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_folder(db: Session, project_id: int, folder_id: int) -> None:
+    """Delete a folder and its subfolders. Documents survive at the root.
+
+    Both rules are the database's: parent_id CASCADEs onto subfolders,
+    reference_files.folder_id is SET NULL. Nothing is deleted from storage here,
+    which is the point — see the note on the ReferenceFolder model.
+    """
+    row = db.get(ReferenceFolder, folder_id)
+    if row is None or row.project_id != project_id:
+        return
+    db.delete(row)
+    db.commit()
+
+
+def move_file(db: Session, file_id: int, folder_id: int | None) -> ReferenceFile:
+    """Re-file a document. ``folder_id=None`` moves it to the project root."""
+    row = db.get(ReferenceFile, file_id)
+    if row is None:
+        raise FolderError(404, "Reference file not found")
+    if folder_id is not None:
+        get_folder_or_404(db, row.project_id, folder_id)
+    row.folder_id = folder_id
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 # --------------------------------------------------------------------- storage
 
 
@@ -240,6 +409,7 @@ def store_reference(
     content_type: str,
     data: bytes,
     task_id: int | None = None,
+    folder_id: int | None = None,
 ) -> ReferenceFile:
     """Persist one document and extract its text.
 
@@ -264,6 +434,7 @@ def store_reference(
     row = ReferenceFile(
         project_id=project_id,
         task_id=task_id,
+        folder_id=folder_id,
         filename=filename[:512],
         content_type=content_type or "application/octet-stream",
         size_bytes=len(data),

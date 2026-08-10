@@ -5,7 +5,12 @@ import { api, ApiError } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
 import type { ReferenceFile, ReferenceUpload } from "@/types/api";
 
-/** The project's reference documents, plus upload / delete / re-extract. */
+/** The project's reference documents, plus upload / delete / re-extract / move.
+ *
+ * One query for every document in the project, not one per folder: the tab needs
+ * the whole set anyway to count each folder's contents, and filtering a list
+ * that is already in memory beats a fetch per folder click.
+ */
 export function useReferenceFiles(projectId: number) {
   const qc = useQueryClient();
   const key = qk.referenceFiles(projectId);
@@ -17,9 +22,12 @@ export function useReferenceFiles(projectId: number) {
   });
 
   const upload = useMutation({
-    mutationFn: (chosen: File[]) => {
+    mutationFn: ({ files: chosen, folderId }: { files: File[]; folderId: number | null }) => {
       const form = new FormData();
       for (const file of chosen) form.append("files", file);
+      // Omitted rather than sent empty when at the root: FormData has no null,
+      // and "" would reach FastAPI as a string that fails int|None coercion.
+      if (folderId != null) form.append("folder_id", String(folderId));
       return api.upload<ReferenceUpload>(`/projects/${projectId}/references`, form);
     },
     onSuccess: (result) => {
@@ -50,6 +58,16 @@ export function useReferenceFiles(projectId: number) {
     onError: (err: ApiError) => toast.error(err.detail || "Could not delete the document"),
   });
 
+  const move = useMutation({
+    mutationFn: (input: { fileId: number; folderId: number | null }) =>
+      api.patch<ReferenceFile>(`/references/${input.fileId}`, { folder_id: input.folderId }),
+    onSuccess: (file) => {
+      qc.invalidateQueries({ queryKey: key });
+      toast.success(`Moved ${file.filename}`);
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not move the document"),
+  });
+
   const reExtract = useMutation({
     mutationFn: (fileId: number) => api.post<ReferenceFile>(`/references/${fileId}/extract`),
     onSuccess: (file) => {
@@ -63,5 +81,5 @@ export function useReferenceFiles(projectId: number) {
     onError: (err: ApiError) => toast.error(err.detail || "Could not re-read the document"),
   });
 
-  return { files: files.data, isPending: files.isPending, upload, remove, reExtract };
+  return { files: files.data, isPending: files.isPending, upload, remove, reExtract, move };
 }

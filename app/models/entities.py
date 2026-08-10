@@ -713,6 +713,45 @@ class PokerVote(Base, TimestampMixin):
     member: Mapped["Member"] = relationship()
 
 
+class ReferenceFolder(Base, TimestampMixin):
+    """A folder in the project's reference document tree.
+
+    An adjacency list, like Task.parent_id: one self-FK gives arbitrary depth
+    with no closure table to keep in sync. Document trees here are a handful of
+    levels at most, so the whole set is read in one query and assembled in
+    Python rather than with a recursive CTE.
+
+    The two delete rules differ on purpose. ``parent_id`` CASCADEs, so deleting
+    a folder takes its subfolders with it — an empty shell of child folders
+    would be worse than nothing. But ``ReferenceFile.folder_id`` is SET NULL, so
+    the documents themselves survive at the project root: filing is
+    organizational, and losing a spec because someone tidied up would be
+    unrecoverable once the blob is gone. Re-filing a document is merely a
+    nuisance.
+
+    Sibling names are kept unique case-insensitively by
+    app.services.references.  Not a UniqueConstraint, because Postgres treats
+    NULLs as distinct and every top-level folder has parent_id IS NULL, so the
+    constraint would silently not apply exactly where it is needed most.
+    """
+
+    __tablename__ = "reference_folders"
+    __table_args__ = (
+        Index("ix_reference_folder_project_id", "project_id"),
+        Index("ix_reference_folder_parent_id", "parent_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    # NULL = a top-level folder, directly under the project root.
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reference_folders.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    project: Mapped["Project"] = relationship()
+
+
 class ReferenceFile(Base, TimestampMixin):
     """An uploaded reference document (md/txt/html/pdf) stored in RustFS.
 
@@ -731,6 +770,12 @@ class ReferenceFile(Base, TimestampMixin):
     # Optional attachment point. SET NULL so deleting a task keeps the document —
     # a spec usually outlives whichever ticket first referenced it.
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    # Where the document is filed. NULL = the project root, which is also what
+    # every document uploaded before folders existed keeps. SET NULL for the
+    # reason spelled out on ReferenceFolder: tidying up must not destroy bytes.
+    folder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reference_folders.id", ondelete="SET NULL"), index=True
+    )
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     content_type: Mapped[str] = mapped_column(String(128), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
@@ -748,6 +793,7 @@ class ReferenceFile(Base, TimestampMixin):
 
     project: Mapped["Project"] = relationship()
     task: Mapped["Task"] = relationship()
+    folder: Mapped["ReferenceFolder"] = relationship()
 
 
 class TaskBreakdown(Base, TimestampMixin):

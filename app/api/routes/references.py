@@ -14,7 +14,15 @@ from app.api.deps import get_or_404
 from app.config import settings
 from app.db import get_db
 from app.models import Project, ReferenceFile, Task
-from app.schemas.reference import ReferenceFileOut, ReferenceUploadOut, RejectedFile
+from app.schemas.reference import (
+    ReferenceFilePatchIn,
+    ReferenceFileOut,
+    ReferenceFolderCreateIn,
+    ReferenceFolderOut,
+    ReferenceFolderPatchIn,
+    ReferenceUploadOut,
+    RejectedFile,
+)
 from app.services import references as refs
 from app.storage import rustfs
 
@@ -59,18 +67,27 @@ async def upload_references(
     project_id: int,
     files: list[UploadFile] = File(...),
     task_id: int | None = Form(None),
+    folder_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Upload one or more reference documents; text is extracted inline.
 
     Partial success by design: each file is accepted or rejected on its own, so
     one bad file in a drop doesn't discard the rest.
+
+    ``folder_id`` files the batch straight into a folder — the drop zone sends
+    whichever folder is open, so a drop lands where the user is looking rather
+    than at the root.
     """
     get_or_404(db, Project, project_id)
     if task_id is not None:
         task = get_or_404(db, Task, task_id, "Task")
         if task.project_id != project_id:
             raise HTTPException(404, "Task not found in this project")
+    # Validated once up front: a bad folder is a bad request for the whole
+    # batch, not a per-file rejection like an oversized upload.
+    if folder_id is not None:
+        refs.get_folder_or_404(db, project_id, folder_id)
 
     uploaded: list[ReferenceFileOut] = []
     rejected: list[RejectedFile] = []
@@ -85,6 +102,7 @@ async def upload_references(
                 content_type=upload.content_type or "",
                 data=data,
                 task_id=task_id,
+                folder_id=folder_id,
             )
             uploaded.append(_out(row))
         except refs.ReferenceError as exc:
@@ -109,6 +127,75 @@ def list_references(project_id: int, db: Session = Depends(get_db)):
 def task_references(task_id: int, db: Session = Depends(get_db)):
     task = get_or_404(db, Task, task_id, "Task")
     return [_out(r) for r in refs.list_references(db, task.project_id, task_id=task_id)]
+
+
+@router.patch("/references/{file_id}", response_model=ReferenceFileOut)
+def move_reference(file_id: int, body: ReferenceFilePatchIn, db: Session = Depends(get_db)):
+    """Re-file a document. ``folder_id: null`` moves it to the project root."""
+    return _out(refs.move_file(db, file_id, body.folder_id))
+
+
+# --- folders ----------------------------------------------------------------
+#
+# Flat in, flat out: the tree is an adjacency list and the client nests it. The
+# guards that matter (sibling-name collisions, moving a folder into its own
+# subtree) live in the service, since they need the project's whole folder list.
+
+
+@router.get(
+    "/projects/{project_id}/reference-folders", response_model=list[ReferenceFolderOut]
+)
+def list_reference_folders(project_id: int, db: Session = Depends(get_db)):
+    get_or_404(db, Project, project_id)
+    return refs.list_folders(db, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/reference-folders",
+    response_model=ReferenceFolderOut,
+    status_code=201,
+)
+def create_reference_folder(
+    project_id: int, body: ReferenceFolderCreateIn, db: Session = Depends(get_db)
+):
+    get_or_404(db, Project, project_id)
+    return refs.create_folder(db, project_id, name=body.name, parent_id=body.parent_id)
+
+
+@router.patch(
+    "/projects/{project_id}/reference-folders/{folder_id}",
+    response_model=ReferenceFolderOut,
+)
+def update_reference_folder(
+    project_id: int,
+    folder_id: int,
+    body: ReferenceFolderPatchIn,
+    db: Session = Depends(get_db),
+):
+    """Rename and/or reparent.
+
+    ``parent_id`` being *absent* means "leave it where it is"; sending it as
+    null means "move to the top level". Only the field set explicitly can be
+    told apart, hence model_fields_set rather than a None check.
+    """
+    get_or_404(db, Project, project_id)
+    return refs.update_folder(
+        db,
+        project_id,
+        folder_id,
+        name=body.name,
+        parent_id=body.parent_id,
+        reparent="parent_id" in body.model_fields_set,
+    )
+
+
+@router.delete(
+    "/projects/{project_id}/reference-folders/{folder_id}", status_code=204
+)
+def delete_reference_folder(project_id: int, folder_id: int, db: Session = Depends(get_db)):
+    """Delete a folder and its subfolders. The documents survive at the root."""
+    get_or_404(db, Project, project_id)
+    refs.delete_folder(db, project_id, folder_id)
 
 
 @router.post("/references/{file_id}/extract", response_model=ReferenceFileOut)

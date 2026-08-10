@@ -17,9 +17,12 @@ import { ACCEPT, MAX_BYTES, validateFiles } from "./file-rules";
  */
 export function FileDropZone({
   busy,
+  folderName,
   onFiles,
 }: {
   busy: boolean;
+  /** Where a drop will land. Null = the project root. */
+  folderName?: string | null;
   onFiles: (files: File[]) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -61,7 +64,11 @@ export function FileDropZone({
       <div className="flex size-10 items-center justify-center rounded-full bg-muted">
         <Upload className="size-5 text-muted-foreground" />
       </div>
-      <div className="text-sm font-medium">Drop reference documents here</div>
+      {/* Naming the destination matters here: the same zone files into whichever
+          folder is selected, so an unlabelled one would silently do two things. */}
+      <div className="text-sm font-medium">
+        {folderName ? `Drop documents into ${folderName}` : "Drop reference documents here"}
+      </div>
       <div className="max-w-sm text-xs text-muted-foreground">
         Markdown, plain text, HTML, PDF or PowerPoint, up to {MAX_BYTES / 1_000_000} MB each.
         Their text becomes the context for AI task breakdown.

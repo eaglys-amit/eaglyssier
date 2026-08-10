@@ -851,10 +851,25 @@ export interface PokerApplyOut {
 
 export type ReferenceKind = "md" | "txt" | "html" | "pdf" | "pptx";
 
+/**
+ * A folder in the document tree, flat — `parent_id: null` is a top-level folder.
+ * The server sends the whole set unnested and the UI assembles it, the same way
+ * the board reads tasks flat and TaskTreeView nests them on render.
+ */
+export interface ReferenceFolder {
+  id: number;
+  project_id: number;
+  parent_id: number | null;
+  name: string;
+  created_at: string | null;
+}
+
 export interface ReferenceFile {
   id: number;
   project_id: number;
   task_id: number | null;
+  /** null = filed at the project root. */
+  folder_id: number | null;
   filename: string;
   content_type: string;
   size_bytes: number;

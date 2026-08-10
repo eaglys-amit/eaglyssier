@@ -13,24 +13,36 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 
+/**
+ * Uncontrolled by default: pass a `trigger` and it owns its own open state.
+ *
+ * `open`/`onOpenChange` are there for the case where the thing being confirmed
+ * comes from a dropdown menu — Radix unmounts the menu on select, which would
+ * take a trigger nested inside it down too, so the dialog has to be driven from
+ * the state the menu item sets instead.
+ */
 export function ConfirmDialog({
   trigger,
   title,
   description,
   confirmLabel = "Delete",
   destructive = true,
+  open,
+  onOpenChange,
   onConfirm,
 }: {
-  trigger: ReactNode;
+  trigger?: ReactNode;
   title: string;
   description?: ReactNode;
   confirmLabel?: string;
   destructive?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onConfirm: () => void;
 }) {
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      {trigger ? <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger> : null}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
