@@ -4,8 +4,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabShell } from "@/features/project-detail/TabShell";
 
 import { BoardView } from "./scrums/BoardView";
+import { BreakdownPanel } from "./scrums/BreakdownPanel";
 import { ChartsView } from "./scrums/ChartsView";
-import { DocsView } from "./scrums/DocsView";
 import { PokerView } from "./scrums/PokerView";
 import { SCRUM_VIEWS, type ScrumView } from "./scrums/scrum-nav";
 import { useScrumParams } from "./scrums/useScrumParams";
@@ -43,8 +43,10 @@ export function ScrumsTab({ projectId }: { projectId: number }) {
           <BoardView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
         ) : view === "poker" ? (
           <PokerView projectId={projectId} sprintId={sprintId} />
-        ) : view === "docs" ? (
-          <DocsView projectId={projectId} sprintId={sprintId} />
+        ) : view === "ai" ? (
+          // The panel is the whole view — it owns its own inputs, job state and
+          // draft editor, so there is nothing to wrap it in.
+          <BreakdownPanel projectId={projectId} sprintId={sprintId} />
         ) : view === "charts" ? (
           <ChartsView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
         ) : (
@@ -61,7 +63,7 @@ function NotYet({ view }: { view: ScrumView }) {
     <EmptyState
       icon={meta.icon}
       title={`${meta.label} is not built yet`}
-      hint="Planning poker, reference documents with AI breakdown, burndown and velocity charts, and standup/retro notes are coming in later phases."
+      hint="Standup and retro notes are coming in a later phase."
     />
   );
 }

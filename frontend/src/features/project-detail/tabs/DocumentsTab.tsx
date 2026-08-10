@@ -17,73 +17,70 @@ import {
 import { formatBytes, formatDate } from "@/lib/format";
 import type { ReferenceFile } from "@/types/api";
 
-import { BreakdownPanel } from "./BreakdownPanel";
-import { FileDropZone } from "./FileDropZone";
-import { useReferenceFiles } from "./useReferenceFiles";
+import { TabShell } from "@/features/project-detail/TabShell";
+
+import { FileDropZone } from "./documents/FileDropZone";
+import { useReferenceFiles } from "./documents/useReferenceFiles";
 
 /**
  * Reference documents for the project: the specs, notes and designs the work
  * came from.
  *
- * Useful on its own as an attachment store, and the input to AI task breakdown
- * — which is why extraction status is surfaced per row rather than hidden: a
- * document with no extractable text is stored fine but can't inform a prompt.
+ * Project-scoped, not sprint-scoped, which is why this is a tab of its own
+ * rather than a corner of Scrums — the same document informs planning, a task's
+ * attachments, and a report. Useful on its own as an attachment store, and the
+ * input to the AI breakdown over in Scrums — which is why extraction status is
+ * surfaced per row rather than hidden: a document with no extractable text is
+ * stored fine but can't inform a prompt.
  */
-export function DocsView({
-  projectId,
-  sprintId,
-}: {
-  projectId: number;
-  /** Tasks created from a draft land in this sprint. */
-  sprintId: number | null;
-}) {
+export function DocumentsTab({ projectId }: { projectId: number }) {
   const { files, isPending, upload, remove, reExtract } = useReferenceFiles(projectId);
 
   return (
-    <div className="space-y-4">
-      <FileDropZone busy={upload.isPending} onFiles={(chosen) => upload.mutate(chosen)} />
+    <TabShell tab="documents">
+      <div className="space-y-4">
+        <FileDropZone busy={upload.isPending} onFiles={(chosen) => upload.mutate(chosen)} />
 
-      {isPending ? (
-        <TableSkeleton rows={4} />
-      ) : !files?.length ? (
-        <EmptyState
-          icon={FileText}
-          title="No reference documents yet"
-          hint="Upload the spec, design notes or ticket export the work came from."
-        />
-      ) : (
-        <div className="rounded-lg border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Document</TableHead>
-                <TableHead className="w-20">Type</TableHead>
-                <TableHead className="w-24 text-right">Size</TableHead>
-                <TableHead className="w-40">Extracted text</TableHead>
-                <TableHead className="w-28">Uploaded</TableHead>
-                <TableHead className="w-32" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {files.map((file) => (
-                <FileRow
-                  key={file.id}
-                  file={file}
-                  busy={
-                    (remove.isPending && remove.variables === file.id) ||
-                    (reExtract.isPending && reExtract.variables === file.id)
-                  }
-                  onReExtract={() => reExtract.mutate(file.id)}
-                  onDelete={() => remove.mutate(file.id)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      <BreakdownPanel projectId={projectId} sprintId={sprintId} files={files ?? []} />
-    </div>
+        {isPending ? (
+          <TableSkeleton rows={4} />
+        ) : !files?.length ? (
+          <EmptyState
+            icon={FileText}
+            title="No reference documents yet"
+            hint="Upload the spec, design notes or ticket export the work came from."
+          />
+        ) : (
+          <div className="rounded-lg border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Document</TableHead>
+                  <TableHead className="w-20">Type</TableHead>
+                  <TableHead className="w-24 text-right">Size</TableHead>
+                  <TableHead className="w-40">Extracted text</TableHead>
+                  <TableHead className="w-28">Uploaded</TableHead>
+                  <TableHead className="w-32" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {files.map((file) => (
+                  <FileRow
+                    key={file.id}
+                    file={file}
+                    busy={
+                      (remove.isPending && remove.variables === file.id) ||
+                      (reExtract.isPending && reExtract.variables === file.id)
+                    }
+                    onReExtract={() => reExtract.mutate(file.id)}
+                    onDelete={() => remove.mutate(file.id)}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+    </TabShell>
   );
 }
 

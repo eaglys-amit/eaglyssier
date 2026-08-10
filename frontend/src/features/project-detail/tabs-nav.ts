@@ -2,6 +2,7 @@ import {
   BarChart3,
   ClipboardList,
   Database,
+  FileText,
   Flag,
   GanttChartSquare,
   Gauge,
@@ -27,12 +28,20 @@ export const PROJECT_TABS = [
     icon: Database,
     blurb: "Sprints, tasks, and repositories synced from the connected platforms.",
   },
+  // The other half of the project's input: what Data syncs from the platforms,
+  // this holds what a human uploaded. Both come before the views that read them.
+  {
+    key: "documents",
+    label: "Documents",
+    icon: FileText,
+    blurb: "Specs, notes and exports the work came from, with the text extracted from each.",
+  },
   // The write surface over the same sprints/tasks Data reads, so it sits next to it.
   {
     key: "scrums",
     label: "Scrums",
     icon: ClipboardList,
-    blurb: "Plan the sprint: board, planning poker, reference documents, and charts.",
+    blurb: "Plan the sprint: board, planning poker, AI breakdown, and charts.",
   },
   // The layer above the sprint horizon, rolled up from the same tasks.
   {

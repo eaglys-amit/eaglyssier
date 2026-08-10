@@ -1,4 +1,4 @@
-import { FileText, LayoutList, MessageSquare, Spade, TrendingUp } from "lucide-react";
+import { LayoutList, MessageSquare, Spade, Sparkles, TrendingUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 /**
@@ -9,11 +9,14 @@ import type { LucideIcon } from "lucide-react";
  * The backlog and sprint planning are deliberately ONE view: planning is moving
  * work out of the backlog into a sprint while a commitment meter tracks you
  * against capacity. Splitting them would mean two lists of the same tasks.
+ *
+ * `ai` drafts a work tree but does NOT manage the documents it reads — those are
+ * project-scoped, so upload and the file list live in the Documents tab.
  */
 export const SCRUM_VIEWS = [
   { key: "board", label: "Board", icon: LayoutList, ready: true },
   { key: "poker", label: "Poker", icon: Spade, ready: true },
-  { key: "docs", label: "Reference & AI", icon: FileText, ready: true },
+  { key: "ai", label: "AI Breakdown", icon: Sparkles, ready: true },
   { key: "charts", label: "Charts", icon: TrendingUp, ready: true },
   { key: "notes", label: "Standups & Retro", icon: MessageSquare, ready: false },
 ] as const satisfies ReadonlyArray<{

@@ -9,6 +9,7 @@ import { DEFAULT_TAB, isTabKey, PROJECT_TABS, type TabKey } from "@/features/pro
 import { CapacityTab } from "@/features/project-detail/tabs/CapacityTab";
 import { DataTab } from "@/features/project-detail/tabs/DataTab";
 import { DeliverablesTab } from "@/features/project-detail/tabs/DeliverablesTab";
+import { DocumentsTab } from "@/features/project-detail/tabs/DocumentsTab";
 import { EvaluationTab } from "@/features/project-detail/tabs/EvaluationTab";
 import { GanttTab } from "@/features/project-detail/tabs/GanttTab";
 import { KpiTab } from "@/features/project-detail/tabs/KpiTab";
@@ -80,6 +81,7 @@ export function ProjectDetailLayout() {
           />
         </div>
         {tab === "data" && <DataTab projectId={projectId} />}
+        {tab === "documents" && <DocumentsTab projectId={projectId} />}
         {tab === "scrums" && <ScrumsTab projectId={projectId} />}
         {tab === "milestones" && <MilestonesTab projectId={projectId} />}
         {tab === "gantt" && <GanttTab projectId={projectId} />}

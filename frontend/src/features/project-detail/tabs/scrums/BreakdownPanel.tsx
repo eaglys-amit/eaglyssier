@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { FileText, RotateCcw, Sparkles, Wand2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -15,13 +15,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
 import { formatPoints } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type {
-  BreakdownAcceptOut,
-  Deck,
-  ReferenceFile,
-  TaskBreakdown,
-} from "@/types/api";
+import type { BreakdownAcceptOut, Deck, TaskBreakdown } from "@/types/api";
 
+import { useReferenceFiles } from "../documents/useReferenceFiles";
 import {
   acceptedIds,
   countAccepted,
@@ -37,6 +33,11 @@ import { BreakdownTree } from "./BreakdownTree";
 /**
  * Draft a work tree from the selected reference documents.
  *
+ * The documents themselves are uploaded and managed on the Documents tab; this
+ * only picks from them. Reading them through useReferenceFiles rather than a
+ * prop means both surfaces share the one qk.referenceFiles cache entry, so
+ * arriving here after an upload costs no extra fetch.
+ *
  * The big-editor pattern from EvaluationSheetEditor: the draft is held in local
  * state with a dirty flag and an explicit action, because a tree isn't
  * expressible as FormData and autosaving a throwaway draft would be pointless.
@@ -44,11 +45,9 @@ import { BreakdownTree } from "./BreakdownTree";
 export function BreakdownPanel({
   projectId,
   sprintId,
-  files,
 }: {
   projectId: number;
   sprintId: number | null;
-  files: ReferenceFile[];
 }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<number[]>([]);
@@ -57,8 +56,10 @@ export function BreakdownPanel({
   const [draft, setDraft] = useState<DraftNode[] | null>(null);
   const [dirty, setDirty] = useState(false);
 
+  const { files } = useReferenceFiles(projectId);
+
   // Only documents with extractable text can inform a prompt.
-  const usable = files.filter((f) => f.extract_status === "ready" && f.char_count > 0);
+  const usable = (files ?? []).filter((f) => f.extract_status === "ready" && f.char_count > 0);
 
   const { data: deck } = useQuery({
     queryKey: qk.deck(projectId),
@@ -190,12 +191,24 @@ export function BreakdownPanel({
           </div>
 
           {!usable.length ? (
-            <p className="text-xs text-muted-foreground">
-              Upload a document with readable text first — a scanned PDF has nothing to read.
-            </p>
+            <EmptyState
+              icon={FileText}
+              title="No readable documents yet"
+              hint="The breakdown reads the project's uploaded documents. A scanned PDF has nothing to read."
+              action={
+                <Button asChild size="sm" variant="outline">
+                  <Link to={`/projects/${projectId}/documents`}>Upload documents</Link>
+                </Button>
+              }
+            />
           ) : (
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Documents</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs text-muted-foreground">Documents</Label>
+                <Button asChild size="xs" variant="ghost">
+                  <Link to={`/projects/${projectId}/documents`}>Manage</Link>
+                </Button>
+              </div>
               {usable.map((f) => (
                 <label key={f.id} className="flex items-center gap-2 text-sm">
                   <Checkbox
