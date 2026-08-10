@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The content column's title bar. Fixed at the same height as the sidebar's
- * header block (`h-19`) and bordered like it, so the two read as one bar across
+ * header block (`h-13`) and bordered like it, so the two read as one bar across
  * the whole window. Keep it to two lines — a back link *or* a description under
  * the title — or it will outgrow that height.
  *
@@ -40,7 +40,7 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex h-19 shrink-0 items-center gap-3 border-b bg-background px-6",
+        "flex h-13 shrink-0 items-center gap-3 border-b bg-background px-6",
         sticky && "sticky top-0 z-30",
       )}
     >
@@ -49,7 +49,7 @@ export function PageHeader({
       {leading ? (
         <>
           {leading}
-          <div className="h-8 w-px shrink-0 bg-border" />
+          <div className="h-7 w-px shrink-0 bg-border" />
         </>
       ) : null}
       <div className="min-w-0 flex-1">
@@ -63,12 +63,12 @@ export function PageHeader({
           </Link>
         ) : null}
         <div className="flex min-w-0 items-center gap-2">
-          {Icon ? <Icon className="size-5 shrink-0 text-muted-foreground" /> : null}
-          <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
+          {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" /> : null}
+          <h1 className="truncate text-base font-semibold leading-6 tracking-tight">{title}</h1>
           {badge}
         </div>
         {!backTo && description ? (
-          <p className="truncate text-xs text-muted-foreground">{description}</p>
+          <p className="truncate text-xs leading-4 text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-1">{actions}</div> : null}

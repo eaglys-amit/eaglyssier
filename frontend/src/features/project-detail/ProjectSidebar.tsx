@@ -39,32 +39,36 @@ export function ProjectSidebar({
 
   return (
     <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
-      {/* h-19 + border-b matches the tab strip, so the two line up across the seam. */}
-      <div className="flex h-19 shrink-0 items-center border-b px-4">
+      {/* h-13 + border-b matches the tab strip, so the two line up across the seam. */}
+      <div className="flex h-13 shrink-0 items-center border-b px-3">
         <BrandLink />
       </div>
 
       {/* Which project everything below belongs to. The arrow is the way back
-          out to the list, since the mark above goes home instead. */}
-      <div className="flex shrink-0 items-center gap-2 border-b px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="truncate text-sm font-semibold tracking-tight">
-            {project?.name ?? "…"}
-          </span>
-          {project?.key ? (
-            <Badge variant="secondary" className="shrink-0">
-              {project.key}
-            </Badge>
-          ) : null}
-        </div>
+          out to the list, since the mark above goes home instead.
+
+          h-13 again: this block sits against the tab's own title bar the way
+          the one above sits against the tab strip, so both seams line up. */}
+      <div className="flex h-13 shrink-0 items-center gap-2 border-b px-3">
         <Link
           to="/projects"
           title="All projects"
-          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+          className="-ml-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
         >
           <ArrowLeft className="size-4" />
           <span className="sr-only">All projects</span>
         </Link>
+        {/* Name and key share this column, so they start on the same edge. */}
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+          <span className="w-full truncate text-sm font-semibold tracking-tight">
+            {project?.name ?? "…"}
+          </span>
+          {project?.key ? (
+            <Badge variant="secondary" className="max-w-full truncate">
+              {project.key}
+            </Badge>
+          ) : null}
+        </div>
       </div>
 
       <nav className="flex-1 space-y-6 px-3 py-2">
@@ -107,7 +111,7 @@ export function ProjectSidebar({
         </div>
       </nav>
 
-      <div className="flex items-center justify-between border-t px-4 py-3">
+      <div className="flex items-center justify-between border-t px-3 py-2.5">
         <span className="text-xs text-muted-foreground">Theme</span>
         <ThemeToggle />
       </div>

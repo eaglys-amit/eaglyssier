@@ -49,9 +49,9 @@ export function ProjectDetailLayout() {
     // Full height of the scroll area so a tab can opt into fitting the screen
     // (the Data tab does, and scrolls inside its panels instead).
     <div className="flex h-full flex-col">
-      {/* h-19 + border-b matches the sidebar header, so the two line up across
+      {/* h-13 + border-b matches the sidebar header, so the two line up across
           the seam. Sticky: the strip stays put while a long tab scrolls. */}
-      <nav className="sticky top-0 z-30 flex h-19 shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-6">
+      <nav className="sticky top-0 z-30 flex h-13 shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-6">
         {PROJECT_TABS.map((t) => (
           <NavLink
             key={t.key}
