@@ -202,6 +202,8 @@ export interface TaskDetail {
   hours: number;
   assignee: string | null;
   sprint: string | null;
+  /** The id behind `sprint` — the edit dialog round-trips it. */
+  sprint_id: number | null;
   project_id: number;
   milestone_id: number | null;
   commits: TaskCommit[];
@@ -805,6 +807,13 @@ export interface PokerQueueItem {
   task_title: string;
   task_description: string | null;
   story_points: number | null;
+  /**
+   * The root of the task's breakdown tree — structural, not a label, matching
+   * the roadmap's definition. All null for standalone work with no parent.
+   */
+  epic_task_id: number | null;
+  epic_key: string | null;
+  epic_title: string | null;
   round_status: PokerRoundStatus | null;
   attempts: number;
 }
@@ -822,6 +831,11 @@ export interface PokerSession {
   /** Snapshotted at creation, so a mid-session scale edit can't change the cards. */
   deck: number[];
   breakdown_points: number[];
+  /**
+   * The task on the table. `null` means nothing is selected — the room is
+   * between estimates, waiting on the facilitator. Never auto-advanced.
+   */
+  active_task_id: number | null;
   created_at: string | null;
   closed_at: string | null;
   queued: number;
@@ -847,9 +861,22 @@ export interface PokerVoteIn {
   abstain: boolean;
 }
 
+/**
+ * POST /poker/:id/queue/move — positional, never a rank value, like the board's
+ * RankMoveIn. `after_task_id: null` puts the task first, which also makes it the
+ * round the room votes on next. Facilitator only.
+ */
+export interface PokerQueueMoveIn {
+  task_id: number;
+  after_task_id: number | null;
+  member_id?: number | null;
+}
+
 export interface PokerApplyIn {
   points: number;
   note?: string | null;
+  /** Checked against the session's facilitator — only they may record. */
+  member_id?: number | null;
 }
 
 export interface PokerApplyOut {
@@ -1086,6 +1113,12 @@ export interface Milestone {
   total_tasks: number;
   completed_tasks: number;
   unestimated_tasks: number;
+  /**
+   * Points stranded on linked tasks that have children. Excluded from
+   * total_points on purpose — a container's estimate would double-count its
+   * subtree — but reported so a short-looking rollup can be explained.
+   */
+  uncounted_points: number;
   /** 0..1. Points-based, falling back to the task count when nothing is estimated. */
   progress: number;
 
@@ -1096,6 +1129,25 @@ export interface Milestone {
   /** forecast_date - target_date in days. Negative = ahead of the date. */
   days_late: number | null;
   health: MilestoneHealth;
+}
+
+/**
+ * The milestone's linked work under one epic. Derived server-side from the task
+ * tree, so it can't drift from the board or the Epics tab.
+ *
+ * All three epic fields are null for the leftover group — work linked to the
+ * milestone that sits under no epic. `total_points` is leaves-only, matching the
+ * milestone's own rollup; `uncounted_points` is what that rule drops.
+ */
+export interface MilestoneEpicGroup {
+  epic_task_id: number | null;
+  epic_key: string | null;
+  epic_title: string | null;
+  total_points: number;
+  completed_points: number;
+  uncounted_points: number;
+  /** The epic's own row is the heading, so it isn't repeated here. */
+  tasks: Task[];
 }
 
 /** A sprint band on the roadmap lane. Only sprints with both dates appear. */

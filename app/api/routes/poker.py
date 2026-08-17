@@ -16,9 +16,11 @@ from app.schemas.poker import (
     PokerApplyOut,
     PokerCandidatesOut,
     PokerFacilitatorIn,
+    PokerQueueMoveIn,
     PokerRevealIn,
     PokerRoundCreateIn,
     PokerRoundOut,
+    PokerSelectIn,
     PokerSessionCreateIn,
     PokerSessionDetail,
     PokerSessionOut,
@@ -93,6 +95,45 @@ def hand_over_facilitation(
     return poker_svc.session_out(db, session)
 
 
+@router.post("/poker/{session_id}/select", response_model=PokerSessionDetail)
+def select_queue_item(
+    session_id: int,
+    body: PokerSelectIn,
+    me: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Put a queued task on the table. **Facilitator only** — 403 for anyone else.
+
+    Nothing is selected automatically: finishing an estimate leaves the table
+    empty until someone says what's next, so the queue can't slide a new task
+    in front of a room that is still talking about the last one.
+    """
+    session = _session(db, session_id)
+    poker_svc.select_round(db, session, body)
+    return poker_svc.build_detail(db, session, for_member_id=me)
+
+
+@router.post("/poker/{session_id}/queue/move", response_model=PokerSessionDetail)
+def move_queue_item(
+    session_id: int,
+    body: PokerQueueMoveIn,
+    me: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Rearrange the queue. **Facilitator only** — 403 for anyone else.
+
+    Queue order is what picks the current round, so this changes which task the
+    room votes on next. The body is positional (`after_task_id`), never a rank —
+    the server owns the numbers.
+
+    Returns the full detail payload so the mover doesn't wait up to 2s for the
+    poll to catch up with a change they just made.
+    """
+    session = _session(db, session_id)
+    poker_svc.move_round(db, session, body)
+    return poker_svc.build_detail(db, session, for_member_id=me)
+
+
 @router.post("/poker/{session_id}/close", response_model=PokerSessionOut)
 def close_poker_session(session_id: int, db: Session = Depends(get_db)):
     session = poker_svc.close_session(db, _session(db, session_id))
@@ -149,5 +190,9 @@ def revote_poker_round(round_id: int, db: Session = Depends(get_db)):
 
 @router.post("/poker/rounds/{round_id}/apply", response_model=PokerApplyOut)
 def apply_poker_round(round_id: int, body: PokerApplyIn, db: Session = Depends(get_db)):
-    """Write the agreed estimate to the task; returns any scale warnings."""
+    """Write the agreed estimate to the task; returns any scale warnings.
+
+    **Facilitator only**, like the reveal — 403 for anyone else. The room agrees
+    the number out loud; one person commits it.
+    """
     return poker_svc.apply_round(db, round_id, body)

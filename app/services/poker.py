@@ -17,7 +17,10 @@ Revealing stays idempotent: two clicks from the facilitator are one reveal.
 
 **Nothing auto-advances.** The ``voted / participants`` counter is advisory. An
 auto-reveal at "everyone voted" would fire in the face of someone who joined a
-millisecond after the last vote and hasn't read the task yet.
+millisecond after the last vote and hasn't read the task yet. The same goes for
+what's on the table: ``PokerSession.active_task_id`` is set by the facilitator,
+so applying an estimate empties the table instead of pulling the next task in
+front of a room that is still talking about the last one.
 """
 from __future__ import annotations
 
@@ -45,8 +48,10 @@ from app.schemas.poker import (
     PokerCandidatesOut,
     PokerParticipantOut,
     PokerQueueItemOut,
+    PokerQueueMoveIn,
     PokerRoundCreateIn,
     PokerRoundOut,
+    PokerSelectIn,
     PokerSessionCreateIn,
     PokerSessionDetail,
     PokerSessionOut,
@@ -129,9 +134,18 @@ def create_session(
     db.flush()
 
     # One round per queued task, created up front so the queue survives a
-    # reload and the order the team agreed on is the order they get.
-    for task_id in ordered:
-        db.add(PokerRound(session_id=session.id, task_id=task_id, attempt=1, status="voting"))
+    # reload and the order the team agreed on is the order they get. Ranks are
+    # spaced so the first reorder has somewhere to insert.
+    for position, task_id in enumerate(ordered, start=1):
+        db.add(
+            PokerRound(
+                session_id=session.id,
+                task_id=task_id,
+                attempt=1,
+                status="voting",
+                rank=position * tasks_svc.RANK_STEP,
+            )
+        )
     db.commit()
     db.refresh(session)
     return session
@@ -212,11 +226,16 @@ def _round_of_session(db: Session, round_id: int) -> PokerRound:
 
 
 def _latest_rounds(db: Session, session_id: int) -> list[PokerRound]:
-    """One round per task — the newest attempt — in queue order."""
+    """One round per task — the newest attempt — in queue order.
+
+    Queue order is `rank`, which the facilitator can rearrange; `id` only breaks
+    ties. Every attempt of a task shares its rank, so taking the newest attempt
+    can't move a task out of the slot the queue put it in.
+    """
     rows = db.execute(
         select(PokerRound)
         .where(PokerRound.session_id == session_id)
-        .order_by(PokerRound.id)
+        .order_by(PokerRound.rank, PokerRound.id)
         .options(selectinload(PokerRound.votes), selectinload(PokerRound.task))
     ).scalars().all()
     newest: dict[int, PokerRound] = {}
@@ -224,12 +243,97 @@ def _latest_rounds(db: Session, session_id: int) -> list[PokerRound]:
         seen = newest.get(row.task_id)
         if seen is None or row.attempt > seen.attempt:
             newest[row.task_id] = row
-    # Preserve first-seen task order, which is the order they were queued.
+    # Preserve first-seen task order, which now follows rank.
     order: list[int] = []
     for row in rows:
         if row.task_id not in order:
             order.append(row.task_id)
     return [newest[tid] for tid in order]
+
+
+def _rank_of_task(db: Session, session_id: int, task_id: int) -> int | None:
+    """The queue rank a task already holds in this session, if it's queued."""
+    return db.execute(
+        select(PokerRound.rank).where(
+            PokerRound.session_id == session_id, PokerRound.task_id == task_id
+        ).limit(1)
+    ).scalar()
+
+
+def _next_rank(db: Session, session_id: int) -> int:
+    """Rank that puts a task at the end of the session's queue."""
+    highest = db.execute(
+        select(func.max(PokerRound.rank)).where(PokerRound.session_id == session_id)
+    ).scalar()
+    return int(highest or 0) + tasks_svc.RANK_STEP
+
+
+def select_round(db: Session, session: PokerSession, data: PokerSelectIn) -> None:
+    """Put a queued task on the table. Facilitator-only.
+
+    `task_id: None` clears the table, which is how a facilitator backs out of a
+    task the room turned out not to be ready for.
+    """
+    _require_facilitator(session, data.member_id, "choose the task to estimate")
+
+    if data.task_id is None:
+        session.active_task_id = None
+        db.commit()
+        return
+
+    row = next(
+        (r for r in _latest_rounds(db, session.id) if r.task_id == data.task_id), None
+    )
+    if row is None:
+        raise HTTPException(404, "That task isn't in this session's queue")
+    if row.status == "applied":
+        raise HTTPException(
+            409,
+            "That task is already estimated — start a re-vote to put it back on the table.",
+        )
+
+    session.active_task_id = data.task_id
+    db.commit()
+
+
+def move_round(
+    db: Session,
+    session: PokerSession,
+    data: PokerQueueMoveIn,
+) -> None:
+    """Reposition a queued task, changing what the room votes on next.
+
+    Facilitator-only, like the reveal and the decision: queue order picks the
+    current round, so an open reorder would let anyone yank the table mid-vote.
+
+    Unlike the board's midpoint-insert-then-renumber dance, this renumbers the
+    whole queue every time. A poker queue is tens of rows, not the project's
+    whole backlog, so one pass is cheaper to reason about than a retry path that
+    only executes when two ranks collide — and it can't run out of gaps.
+    """
+    _require_facilitator(session, data.member_id, "reorder the queue")
+
+    order = [r.task_id for r in _latest_rounds(db, session.id)]
+    if data.task_id not in order:
+        raise HTTPException(404, "That task isn't in this session's queue")
+    if data.after_task_id == data.task_id:
+        raise HTTPException(422, "A task cannot be positioned after itself")
+    if data.after_task_id is not None and data.after_task_id not in order:
+        raise HTTPException(404, "Anchor task isn't in this session's queue")
+
+    order.remove(data.task_id)
+    if data.after_task_id is None:
+        order.insert(0, data.task_id)
+    else:
+        order.insert(order.index(data.after_task_id) + 1, data.task_id)
+
+    ranks = {task_id: (i + 1) * tasks_svc.RANK_STEP for i, task_id in enumerate(order)}
+    # Every attempt of a task moves together, so a re-vote stays in its slot.
+    for row in db.execute(
+        select(PokerRound).where(PokerRound.session_id == session.id)
+    ).scalars().all():
+        row.rank = ranks.get(row.task_id, row.rank)
+    db.commit()
 
 
 def open_round(
@@ -249,6 +353,9 @@ def open_round(
         task_id=task.id,
         attempt=int(highest or 0) + 1,
         status="voting",
+        # A task already in the queue keeps its slot; a genuinely new one lands
+        # at the end, where someone adding work mid-session expects it.
+        rank=_rank_of_task(db, session.id, task.id) or _next_rank(db, session.id),
     )
     db.add(row)
     db.commit()
@@ -290,22 +397,28 @@ def cast_vote(db: Session, round_id: int, data: PokerVoteIn) -> PokerRound:
     return row
 
 
-def reveal_round(db: Session, round_id: int, member_id: int | None = None) -> PokerRound:
-    """Show every card. Facilitator only; idempotent for them.
+def _require_facilitator(session: PokerSession, member_id: int | None, action: str) -> None:
+    """Gate a facilitator-only transition.
 
     A session with no facilitator (created before the lock, or whose
-    facilitator was deleted) falls back to open reveal rather than becoming
-    permanently unrevealable.
+    facilitator was deleted) falls back to letting anyone through, rather than
+    stranding the room with a round it can never finish.
     """
+    facilitator = session.facilitator_member_id
+    if facilitator is None or member_id == facilitator:
+        return
+    name = session.facilitator.display_name if session.facilitator else "the facilitator"
+    raise HTTPException(
+        403,
+        f"Only {name} can {action} — they started the session. "
+        "They can hand over facilitation if they've dropped out.",
+    )
+
+
+def reveal_round(db: Session, round_id: int, member_id: int | None = None) -> PokerRound:
+    """Show every card. Facilitator only; idempotent for them."""
     row = _round_of_session(db, round_id)
-    facilitator = row.session.facilitator_member_id
-    if facilitator is not None and member_id != facilitator:
-        name = row.session.facilitator.display_name if row.session.facilitator else "the facilitator"
-        raise HTTPException(
-            403,
-            f"Only {name} can reveal this round — they started the session. "
-            "They can hand over facilitation if they've dropped out.",
-        )
+    _require_facilitator(row.session, member_id, "reveal this round")
     if row.status == "voting":
         row.status = "revealed"
         row.revealed_at = _now()
@@ -344,8 +457,14 @@ def revote(db: Session, round_id: int) -> PokerRound:
         task_id=row.task_id,
         attempt=row.attempt + 1,
         status="voting",
+        # Inherit the slot: a re-vote is the same task again, not new work, so
+        # it must not jump to the end of the queue.
+        rank=row.rank,
     )
     db.add(fresh)
+    # Re-voting is a statement that this task is what the room is doing now, so
+    # it goes back on the table without a second click.
+    row.session.active_task_id = row.task_id
     db.commit()
     db.refresh(fresh)
     return fresh
@@ -354,6 +473,10 @@ def revote(db: Session, round_id: int) -> PokerRound:
 def apply_round(db: Session, round_id: int, data: PokerApplyIn) -> PokerApplyOut:
     """Write the agreed estimate to the task and settle the round."""
     row = _round_of_session(db, round_id)
+    # Same lock as the reveal: everyone argues, the facilitator records. Without
+    # this, two people accepting different numbers a second apart would leave the
+    # task on whichever call happened to land last.
+    _require_facilitator(row.session, data.member_id, "record this estimate")
     if row.status == "applied":
         raise HTTPException(409, "This round was already decided")
     if row.status == "voting":
@@ -464,6 +587,23 @@ def round_out(
     )
 
 
+def _queue_item(row: PokerRound, epic: Task | None) -> PokerQueueItemOut:
+    """One queue row. `epic` is the root of the task's tree, or None if standalone."""
+    task = row.task
+    return PokerQueueItemOut(
+        task_id=row.task_id,
+        task_key=tasks_svc.task_label(task) if task else None,
+        task_title=task.title if task else "",
+        task_description=task.description if task else None,
+        story_points=task.story_points if task else None,
+        epic_task_id=epic.id if epic else None,
+        epic_key=tasks_svc.task_label(epic) if epic else None,
+        epic_title=epic.title if epic else None,
+        round_status=row.status,
+        attempts=row.attempt,
+    )
+
+
 def session_out(db: Session, session: PokerSession) -> PokerSessionOut:
     rounds = _latest_rounds(db, session.id)
     return PokerSessionOut(
@@ -479,6 +619,7 @@ def session_out(db: Session, session: PokerSession) -> PokerSessionOut:
         ),
         deck=session.deck or [],
         breakdown_points=session.breakdown_points or [],
+        active_task_id=session.active_task_id,
         created_at=session.created_at,
         closed_at=session.closed_at,
         queued=len(rounds),
@@ -505,7 +646,18 @@ def build_detail(
     can never appear to trickle in one poll at a time.
     """
     rounds = _latest_rounds(db, session.id)
-    active = next((r for r in rounds if r.status in ("voting", "revealed")), None)
+    # Whatever the facilitator put on the table — and only while it's still
+    # unsettled, so applying an estimate clears the table rather than sliding
+    # the next task under a room that's still talking. No fallback to "first
+    # unsettled": that fallback *is* the auto-advance this replaced.
+    active = next(
+        (
+            r
+            for r in rounds
+            if r.task_id == session.active_task_id and r.status in ("voting", "revealed")
+        ),
+        None,
+    )
 
     members = db.execute(
         select(Member)
@@ -540,6 +692,9 @@ def build_detail(
             )
 
     deck = [float(p) for p in (session.deck or [])]
+    # Resolved in one batch for the whole queue rather than per row — see
+    # tasks_svc.roots_of. `r.task` is already eager-loaded by _latest_rounds.
+    epics = tasks_svc.roots_of(db, [r.task for r in rounds if r.task is not None])
     detail = PokerSessionDetail(
         **session_out(db, session).model_dump(),
         participants=participants,
@@ -553,18 +708,7 @@ def build_detail(
             if active
             else None
         ),
-        queue=[
-            PokerQueueItemOut(
-                task_id=r.task_id,
-                task_key=tasks_svc.task_label(r.task) if r.task else None,
-                task_title=r.task.title if r.task else "",
-                task_description=r.task.description if r.task else None,
-                story_points=r.task.story_points if r.task else None,
-                round_status=r.status,
-                attempts=r.attempt,
-            )
-            for r in rounds
-        ],
+        queue=[_queue_item(r, epics.get(r.task_id)) for r in rounds],
     )
     return detail
 

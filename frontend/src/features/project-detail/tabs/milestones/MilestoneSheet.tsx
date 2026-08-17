@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link2, Plus, X } from "lucide-react";
+import { GitBranch, Link2, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -20,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { formatDate, formatPoints, taskLabel } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type { BacklogBoard, Milestone, Task } from "@/types/api";
+import type { BacklogBoard, Milestone, MilestoneEpicGroup } from "@/types/api";
 
 import { MilestoneProgress } from "./MilestoneProgress";
 import { useMilestones, useMilestoneTasks } from "./useMilestones";
@@ -115,7 +115,6 @@ export function MilestoneSheet({
               <LinkedTasks
                 projectId={projectId}
                 milestoneId={milestone.id}
-                tasks={tasks.data ?? []}
                 loading={tasks.isPending}
                 onUnlink={(taskId) => unlinkTask.mutate({ milestoneId: milestone.id, taskId })}
               />
@@ -134,16 +133,25 @@ export function MilestoneSheet({
   );
 }
 
-/** Linked work, grouped by the sprint it currently sits in. */
+/**
+ * Linked work, grouped by the epic it belongs to.
+ *
+ * Epic rather than sprint, because that's the relationship a milestone is made
+ * of: it covers epics, and one epic's tasks routinely run across several
+ * sprints. So the sprint is a badge on each row instead of the heading — the
+ * milestone header already summarises which sprints it spans.
+ *
+ * The grouping is the server's (`/milestones/:id/epics`), derived from the task
+ * tree on read, so it can't drift from the board or from the Epics tab.
+ */
 function LinkedTasks({
   projectId,
-  tasks,
+  milestoneId,
   loading,
   onUnlink,
 }: {
   projectId: number;
   milestoneId: number;
-  tasks: Task[];
   loading: boolean;
   onUnlink: (taskId: number) => void;
 }) {
@@ -153,25 +161,19 @@ function LinkedTasks({
     queryFn: () => api.get<BacklogBoard>(`/projects/${projectId}/backlog-board`),
   });
 
+  const { data: groups } = useQuery({
+    queryKey: qk.milestoneEpics(projectId, milestoneId),
+    queryFn: () =>
+      api.get<MilestoneEpicGroup[]>(
+        `/projects/${projectId}/milestones/${milestoneId}/epics`,
+      ),
+    enabled: Number.isFinite(milestoneId),
+  });
+
   const sprintName = (id: number | null) =>
     id === null
       ? "Backlog"
       : board?.sprints.find((s) => s.sprint_id === id)?.name ?? `Sprint ${id}`;
-
-  const groups = useMemo(() => {
-    const bySprint = new Map<number | null, Task[]>();
-    for (const task of tasks) {
-      const list = bySprint.get(task.sprint_id) ?? [];
-      list.push(task);
-      bySprint.set(task.sprint_id, list);
-    }
-    // Backlog last: it's the work with no date attached to it yet.
-    return [...bySprint.entries()].sort(([a], [b]) => {
-      if (a === null) return 1;
-      if (b === null) return -1;
-      return a - b;
-    });
-  }, [tasks]);
 
   const openTask = (taskId: number) => {
     params.set("task", String(taskId));
@@ -180,7 +182,8 @@ function LinkedTasks({
 
   if (loading) return <Skeleton className="h-24 w-full" />;
 
-  if (!tasks.length) {
+  const rows = (groups ?? []).reduce((n, g) => n + g.tasks.length, 0);
+  if (!rows) {
     return (
       <div className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
         Nothing linked yet. Until there is, this milestone has no progress and no forecast.
@@ -191,18 +194,44 @@ function LinkedTasks({
   return (
     <div className="space-y-3">
       <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Linked work ({tasks.length})
+        Linked work ({rows})
       </h4>
-      {groups.map(([sprintId, list]) => (
-        <div key={sprintId ?? "backlog"} className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium">{sprintName(sprintId)}</span>
+      {(groups ?? []).map((group) => (
+        <div key={group.epic_task_id ?? "standalone"} className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {group.epic_task_id != null ? (
+              <button
+                type="button"
+                onClick={() => openTask(group.epic_task_id!)}
+                className="flex min-w-0 items-center gap-1.5 text-left hover:underline"
+              >
+                <GitBranch className="size-3 shrink-0 text-muted-foreground" />
+                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  {group.epic_key}
+                </span>
+                <span className="truncate text-xs font-medium">{group.epic_title}</span>
+              </button>
+            ) : (
+              // Named, not left blank: "no epic" is a fact about this work, and
+              // a heading-less group reads as a rendering bug.
+              <span className="text-xs font-medium text-muted-foreground">
+                Not under an epic
+              </span>
+            )}
             <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-              {formatPoints(list.reduce((sum, t) => sum + (t.story_points ?? 0), 0))} pts
+              {formatPoints(group.total_points)} pts
             </span>
+            {group.uncounted_points > 0 ? (
+              <span
+                className="font-mono text-[10px] tabular-nums text-warning"
+                title="Points sitting on a task that has subtasks. They aren't counted — the subtasks carry the total — so move them down or clear them."
+              >
+                +{formatPoints(group.uncounted_points)} uncounted
+              </span>
+            ) : null}
           </div>
           <ul className="divide-y rounded-lg border">
-            {list.map((task) => (
+            {group.tasks.map((task) => (
               <li key={task.id} className="flex items-center gap-2 px-2.5 py-1.5">
                 <button
                   type="button"
@@ -214,6 +243,10 @@ function LinkedTasks({
                   </span>
                   <span className="truncate text-xs">{task.title}</span>
                 </button>
+                {/* Where the work sits — the thing the epic grouping gives up. */}
+                <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                  {sprintName(task.sprint_id)}
+                </Badge>
                 <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
                   {task.story_points === null ? "—" : formatPoints(task.story_points)}
                 </span>

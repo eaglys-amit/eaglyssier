@@ -77,6 +77,10 @@ class TaskDetail(BaseModel):
     hours: float
     assignee: str | None
     sprint: str | None
+    # The id behind `sprint`. The edit dialog round-trips it so saving a task
+    # can't quietly move it to whichever sprint the board happens to have
+    # selected; `sprint` alone is a display name and can't do that job.
+    sprint_id: int | None = None
     # Both needed by the sheet's milestone picker: the id to select, the
     # project to list the options from.
     project_id: int

@@ -10,6 +10,7 @@ from datetime import date
 from pydantic import BaseModel
 
 from app.schemas.common import ApiModel
+from app.schemas.data import TaskOut
 
 
 class MilestoneCreateIn(BaseModel):
@@ -52,6 +53,27 @@ class MilestoneSprintRef(ApiModel):
     points_in_milestone: float = 0.0
 
 
+class MilestoneEpicGroupOut(ApiModel):
+    """The milestone's work under one epic.
+
+    Derived from the task tree, never stored — see milestones.milestone_epics.
+    All three epic fields are null for the leftover group: work linked to the
+    milestone that sits under no epic at all.
+
+    `total_points` is leaves-only, like every other rollup here, so the groups
+    sum to the milestone's own total. `uncounted_points` is what the rule drops:
+    points sitting on a task that has children.
+    """
+    epic_task_id: int | None = None
+    epic_key: str | None = None
+    epic_title: str | None = None
+    total_points: float = 0.0
+    completed_points: float = 0.0
+    uncounted_points: float = 0.0
+    # The epic's own row is the heading, so it is not repeated in here.
+    tasks: list[TaskOut] = []
+
+
 class MilestoneOut(ApiModel):
     id: int
     project_id: int
@@ -71,6 +93,10 @@ class MilestoneOut(ApiModel):
     total_tasks: int = 0
     completed_tasks: int = 0
     unestimated_tasks: int = 0
+    # Points stranded on linked tasks that have children. Deliberately excluded
+    # from total_points — see milestone_epics — but surfaced so a rollup that
+    # looks short can be explained rather than doubted.
+    uncounted_points: float = 0.0
     # 0..1. Points-based; falls back to the task count when nothing is
     # estimated, so a milestone of unpointed work still shows movement.
     progress: float = 0.0

@@ -7,6 +7,7 @@ import { qk } from "@/lib/query-keys";
 import type {
   PokerApplyIn,
   PokerApplyOut,
+  PokerQueueMoveIn,
   PokerSessionDetail,
   PokerVoteIn,
 } from "@/types/api";
@@ -106,8 +107,13 @@ export function usePokerSession(
   });
 
   const apply = useMutation({
+    // member_id rides along so the server can enforce facilitator-only, the same
+    // as reveal. The UI renders the controls read-only for everyone else.
     mutationFn: ({ roundId, body }: { roundId: number; body: PokerApplyIn }) =>
-      api.post<PokerApplyOut>(`/poker/rounds/${roundId}/apply`, body),
+      api.post<PokerApplyOut>(`/poker/rounds/${roundId}/apply`, {
+        ...body,
+        member_id: meId,
+      }),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: key });
       invalidateDerived();
@@ -120,6 +126,63 @@ export function usePokerSession(
       }
     },
     onError: (err: ApiError) => toast.error(err.detail || "Could not save the estimate"),
+  });
+
+  /**
+   * Put a task on the table. Nothing is selected automatically, so this is how
+   * every round starts — and how the room moves on after applying an estimate.
+   *
+   * No optimistic write: selecting swaps the whole round out (task, votes,
+   * stats), and guessing that shape locally would flash a half-built round.
+   * The response carries the real one, so the wait is a request, not a poll.
+   */
+  const selectTask = useMutation({
+    mutationKey: key,
+    mutationFn: (taskId: number | null) =>
+      api.post<PokerSessionDetail>(
+        `/poker/${sessionId}/select${meId != null ? `?me=${meId}` : ""}`,
+        { task_id: taskId, member_id: meId },
+      ),
+    onSuccess: (detail) => qc.setQueryData(key, detail),
+    onError: (err: ApiError) =>
+      toast.error(err.detail || "Could not put that task on the table"),
+    onSettled: () => {
+      if (qc.isMutating({ mutationKey: key }) > 1) return;
+      qc.invalidateQueries({ queryKey: key });
+    },
+  });
+
+  /**
+   * Rearrange the queue — and therefore what the room votes on next.
+   *
+   * The response is the whole detail payload, so `current_round` corrects
+   * itself on the mutation's own response instead of up to 2s later on the
+   * poll. The optimistic write only reorders `queue`: recomputing which round
+   * becomes active is the server's job, and guessing it here would mean
+   * duplicating that rule in two places.
+   */
+  const moveQueue = useMutation({
+    mutationKey: key,
+    mutationFn: (body: PokerQueueMoveIn) =>
+      api.post<PokerSessionDetail>(
+        `/poker/${sessionId}/queue/move${meId != null ? `?me=${meId}` : ""}`,
+        { ...body, member_id: meId },
+      ),
+    onMutate: async (body) => {
+      await qc.cancelQueries({ queryKey: key });
+      const previous = qc.getQueryData<PokerSessionDetail>(key);
+      qc.setQueryData<PokerSessionDetail>(key, (s) => (s ? withMovedTask(s, body) : s));
+      return { previous };
+    },
+    onError: (err: ApiError, _body, ctx) => {
+      if (ctx?.previous) qc.setQueryData(key, ctx.previous);
+      toast.error(err.detail || "Could not reorder the queue");
+    },
+    onSuccess: (detail) => qc.setQueryData(key, detail),
+    onSettled: () => {
+      if (qc.isMutating({ mutationKey: key }) > 1) return;
+      qc.invalidateQueries({ queryKey: key });
+    },
   });
 
   const close = useMutation({
@@ -139,8 +202,33 @@ export function usePokerSession(
     takeOver,
     revote,
     apply,
+    selectTask,
+    moveQueue,
     close,
   };
+}
+
+/**
+ * Optimistically reposition one queue row.
+ *
+ * Pure, and deliberately narrow: it moves the row and nothing else. See
+ * `moveQueue` for why `current_round` is left to the server.
+ */
+export function withMovedTask(
+  session: PokerSessionDetail,
+  { task_id, after_task_id }: PokerQueueMoveIn,
+): PokerSessionDetail {
+  const moved = session.queue.find((q) => q.task_id === task_id);
+  if (!moved) return session;
+
+  const rest = session.queue.filter((q) => q.task_id !== task_id);
+  if (after_task_id === null) return { ...session, queue: [moved, ...rest] };
+
+  const at = rest.findIndex((q) => q.task_id === after_task_id);
+  // An anchor that isn't there any more (a stale drag against a refetched
+  // queue) appends rather than dropping the row on the floor.
+  if (at === -1) return { ...session, queue: [...rest, moved] };
+  return { ...session, queue: [...rest.slice(0, at + 1), moved, ...rest.slice(at + 1)] };
 }
 
 /** The round id the cache currently considers active. */

@@ -31,6 +31,7 @@ from app.schemas.milestone import (
     GenerateOut,
     GeneratePreviewOut,
     MilestoneCreateIn,
+    MilestoneEpicGroupOut,
     MilestoneOut,
     MilestonePatchIn,
     MilestoneSprintRef,
@@ -39,6 +40,7 @@ from app.schemas.milestone import (
 )
 from app.schemas.scrum import VelocityOut
 from app.services import burndown as burndown_svc
+from app.services.backlog import task_out
 from app.services import tasks as tasks_svc
 
 # Fallback sprint length when no sprint has both dates. Two weeks is the
@@ -91,6 +93,83 @@ def milestone_tasks(db: Session, milestone_id: int) -> list[Task]:
             .order_by(Task.sprint_id.asc().nullslast(), Task.rank, Task.id)
         ).scalars().all()
     )
+
+
+def milestone_epics(db: Session, milestone_id: int) -> list[MilestoneEpicGroupOut]:
+    """The milestone's work grouped by the epic it belongs to.
+
+    The relationship a roadmap actually needs: a milestone covers epics, and an
+    epic's tasks routinely span several sprints — so the sprint is a property of
+    each row here, not the grouping.
+
+    Grouping is derived through :func:`tasks_svc.roots_of`, the same tree walk
+    the poker queue uses, rather than a stored epic id. Nothing to keep in sync,
+    and re-parenting a task moves it between groups for free.
+
+    Points follow the house rule: leaves only. A container's own points are
+    reported separately as `uncounted_points` rather than folded in, so the
+    group total still sums to what the milestone rollup counts.
+    """
+    tasks = milestone_tasks(db, milestone_id)
+    if not tasks:
+        return []
+
+    roots = tasks_svc.roots_of(db, tasks)
+    # One query: which of these tasks have children *anywhere*, not just among
+    # the linked set. A container is a container regardless of what's linked.
+    container_ids = set(
+        db.execute(
+            select(Task.parent_id)
+            .where(Task.parent_id.in_([t.id for t in tasks]))
+            .distinct()
+        ).scalars().all()
+    )
+
+    groups: dict[int | None, MilestoneEpicGroupOut] = {}
+    for task in tasks:
+        epic = roots.get(task.id)
+        if epic is not None:
+            head = epic  # somewhere below an epic
+        elif task.id in container_ids:
+            head = task  # a root that holds work: it heads its own group
+        else:
+            head = None  # a root with no children: standalone
+
+        key = head.id if head else None
+        group = groups.get(key)
+        if group is None:
+            group = MilestoneEpicGroupOut(
+                epic_task_id=head.id if head else None,
+                epic_key=tasks_svc.task_label(head) if head else None,
+                epic_title=head.title if head else None,
+            )
+            groups[key] = group
+
+        # The epic's own row is the group's heading, not a row inside it.
+        if head is not None and task.id == head.id:
+            group.uncounted_points += task.story_points or 0.0
+            continue
+
+        group.tasks.append(task_out(task))
+        if task.id in container_ids:
+            # An intermediate container inside the subtree — same rule again:
+            # its points are stranded, its children carry the real total.
+            group.uncounted_points += task.story_points or 0.0
+            continue
+        group.total_points += task.story_points or 0.0
+        if task.status_category == StatusCategory.done:
+            group.completed_points += task.story_points or 0.0
+
+    for group in groups.values():
+        group.total_points = round(group.total_points, 1)
+        group.completed_points = round(group.completed_points, 1)
+        group.uncounted_points = round(group.uncounted_points, 1)
+
+    # Epics first in queue-ish order, standalone work last — it's the leftovers,
+    # not a peer group.
+    ordered = [g for g in groups.values() if g.epic_task_id is not None]
+    ordered.sort(key=lambda g: g.epic_key or "")
+    return ordered + [g for g in groups.values() if g.epic_task_id is None]
 
 
 # -------------------------------------------------------------------- write
@@ -159,7 +238,17 @@ def delete_milestone(db: Session, milestone: Milestone) -> None:
 
 
 def assign_tasks(db: Session, milestone: Milestone, task_ids: list[int]) -> list[Task]:
-    """Link tasks to the milestone. Rejects anything from another project."""
+    """Link tasks to the milestone, cascading into any epic's subtree.
+
+    The cascade is what makes "this milestone covers that epic" mean anything.
+    Progress is a leaf-only rollup (see :func:`_leaf_tasks`), so linking an epic
+    on its own used to contribute exactly zero — the epic is not a leaf and its
+    children were never linked. Linking the subtree instead keeps the number
+    honest without teaching the rollup about containers.
+
+    Still per-task underneath: dropping one leaf afterwards leaves the rest of
+    the epic linked, which is the partial-linking the generator relies on.
+    """
     if not task_ids:
         return []
     tasks = list(
@@ -169,20 +258,36 @@ def assign_tasks(db: Session, milestone: Milestone, task_ids: list[int]) -> list
     missing = [i for i in task_ids if i not in found]
     if missing:
         raise HTTPException(404, f"Task(s) not found: {missing}")
+
+    linked: dict[int, Task] = {}
     for task in tasks:
         if task.project_id != milestone.project_id:
             raise HTTPException(400, "A task from another project can't join this milestone")
+        linked[task.id] = task
+        for child in tasks_svc.descendants(db, task.id):
+            linked.setdefault(child.id, child)
+
+    for task in linked.values():
         task.milestone_id = milestone.id
     db.commit()
-    return tasks
+    return list(linked.values())
 
 
 def unassign_task(db: Session, milestone: Milestone, task_id: int) -> None:
-    """Tolerant unlink: a task already off the milestone is a no-op, not a 404."""
+    """Tolerant unlink: a task already off the milestone is a no-op, not a 404.
+
+    Cascades like :func:`assign_tasks`, or unlinking an epic would leave its
+    leaves behind — still counted, with nothing on screen explaining why.
+    Only descendants on *this* milestone are cleared, so a subtree deliberately
+    split across two milestones keeps the other one's links.
+    """
     task = db.get(Task, task_id)
     if task is None or task.milestone_id != milestone.id:
         return
     task.milestone_id = None
+    for child in tasks_svc.descendants(db, task.id):
+        if child.milestone_id == milestone.id:
+            child.milestone_id = None
     db.commit()
 
 
@@ -282,6 +387,16 @@ def build_milestone(
     completed_tasks = sum(1 for t in leaves if t.status_category == StatusCategory.done)
     unestimated = sum(1 for t in leaves if t.story_points is None)
 
+    # Points sitting on a linked task that has children. The leaves-only rule
+    # drops them, which is correct — a container's estimate would double-count
+    # its subtree — but silently losing points makes the rollup look wrong.
+    # Reported so the UI can name the task instead of the number just not adding up.
+    linked = milestone_tasks(db, milestone.id)
+    leaf_ids = {t.id for t in leaves}
+    uncounted_points = round(
+        sum(t.story_points or 0.0 for t in linked if t.id not in leaf_ids), 1
+    )
+
     # Points where there are points; otherwise fall back to the task count, so
     # a milestone of unestimated work still shows movement instead of a flat 0.
     if total_points > 0:
@@ -343,6 +458,7 @@ def build_milestone(
         total_tasks=total_tasks,
         completed_tasks=completed_tasks,
         unestimated_tasks=unestimated,
+        uncounted_points=uncounted_points,
         progress=round(progress, 4),
         sprints=sprints,
         forecast_date=forecast_date,

@@ -184,6 +184,25 @@ def patch_task(db: Session, task: Task, data: TaskPatchIn) -> Task:
     for key, value in fields.items():
         setattr(task, key, value)
 
+    # Joining an epic joins its milestone. The epic is what a milestone is
+    # composed of (see milestones.assign_tasks), so without this a task dragged
+    # into an epic would sit in that epic's group on the roadmap contributing
+    # nothing — the exact hole the link cascade exists to close.
+    #
+    # Only on the way *in*: leaving an epic says nothing about the release, so a
+    # promoted task keeps whatever milestone it had. An explicit milestone_id in
+    # the same request wins, since that caller is being specific.
+    if "parent_id" in fields and fields["parent_id"] is not None:
+        if "milestone_id" not in fields:
+            parent = db.get(Task, fields["parent_id"])
+            inherited = parent.milestone_id if parent else None
+            if inherited is not None and task.milestone_id != inherited:
+                task.milestone_id = inherited
+                # The whole subtree moves with it, or a moved epic's children
+                # would be split across two milestones.
+                for child in tasks_svc.descendants(db, task.id):
+                    child.milestone_id = inherited
+
     task.updated_at_src = _now()
     db.commit()
     db.refresh(task)

@@ -58,6 +58,10 @@ export const qk = {
   roadmap: (id: number) => ["projects", id, "milestones", "roadmap"] as const,
   milestoneTasks: (id: number, milestoneId: number) =>
     ["projects", id, "milestones", milestoneId, "tasks"] as const,
+  // The same linked work grouped by epic. Nested under milestones like the rest,
+  // so the prefix sweep above covers it.
+  milestoneEpics: (id: number, milestoneId: number) =>
+    ["projects", id, "milestones", milestoneId, "epics"] as const,
   generatePreview: (id: number) =>
     ["projects", id, "milestones", "generate-preview"] as const,
   // Epic generation rewrites the backlog tree, so it lives under the scrums

@@ -119,6 +119,48 @@ def descendants(db: Session, task_id: int) -> list[Task]:
     return out
 
 
+def roots_of(db: Session, tasks: list[Task]) -> dict[int, Task | None]:
+    """Map each task to the root of its breakdown tree — its epic.
+
+    "Epic" is structural here, not a label, the same definition the roadmap uses
+    (see milestones._plan_from_epics): the parentless task at the top of a tree
+    that has children. A task that *is* its own root maps to None — it's
+    standalone work, not an epic's child.
+
+    Batched level by level rather than one walk per task: a queue of thirty rows
+    costs a couple of queries, not thirty. Iterative like `descendants` for the
+    same reason — trees are capped at three levels.
+    """
+    by_id: dict[int, Task] = {t.id: t for t in tasks}
+    frontier = {t.parent_id for t in tasks if t.parent_id is not None} - by_id.keys()
+
+    # The cap is a guard against a cycle in the data, not an expected depth.
+    for _ in range(10):
+        if not frontier:
+            break
+        rows = db.execute(select(Task).where(Task.id.in_(frontier))).scalars().all()
+        for row in rows:
+            by_id[row.id] = row
+        frontier = {
+            r.parent_id for r in rows if r.parent_id is not None
+        } - by_id.keys()
+
+    out: dict[int, Task | None] = {}
+    for task in tasks:
+        cursor = task
+        seen = {task.id}
+        while cursor.parent_id is not None:
+            parent = by_id.get(cursor.parent_id)
+            # A missing parent means the walk ran past what we loaded; a seen one
+            # means a cycle. Either way the highest row reached is the best answer.
+            if parent is None or parent.id in seen:
+                break
+            seen.add(parent.id)
+            cursor = parent
+        out[task.id] = cursor if cursor.id != task.id else None
+    return out
+
+
 def would_cycle(db: Session, task_id: int, new_parent_id: int | None) -> bool:
     """True when re-parenting `task_id` under `new_parent_id` closes a loop."""
     if new_parent_id is None:

@@ -241,6 +241,16 @@ export function MilestoneListView({
 
                   <TableCell className="text-right font-mono text-xs tabular-nums">
                     {formatPoints(m.completed_points)} / {formatPoints(m.total_points)}
+                    {/* Says why the total looks short, rather than leaving the
+                        number to be doubted. See milestones.milestone_epics. */}
+                    {m.uncounted_points > 0 ? (
+                      <span
+                        className="ml-1 text-warning"
+                        title={`${formatPoints(m.uncounted_points)} more points sit on linked tasks that have subtasks. They aren't counted — the subtasks carry the total — so move them down or clear them.`}
+                      >
+                        ⚠
+                      </span>
+                    ) : null}
                   </TableCell>
 
                   <TableCell className="text-right font-mono text-xs tabular-nums">

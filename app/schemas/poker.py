@@ -70,9 +70,32 @@ class PokerFacilitatorIn(BaseModel):
     member_id: int
 
 
+class PokerSelectIn(BaseModel):
+    """Put a queued task on the table (or clear it with `task_id: null`)."""
+    task_id: int | None = None
+    # Checked against the facilitator: this is what the whole room then votes on.
+    member_id: int | None = None
+
+
+class PokerQueueMoveIn(BaseModel):
+    """Reposition a task in the session's queue.
+
+    Positional, never a rank value — the server owns the numbers, the same
+    contract the board's `after_task_id` uses. `after_task_id: null` means
+    "put it first", which also makes it the round the room votes on next.
+    """
+    task_id: int
+    after_task_id: int | None = None
+    # Checked against the facilitator: queue order decides the current round.
+    member_id: int | None = None
+
+
 class PokerApplyIn(BaseModel):
     points: float
     note: str | None = None
+    # Who is recording the estimate. Checked against the session's facilitator,
+    # the same way the reveal is: the room discusses, one person writes it down.
+    member_id: int | None = None
 
 
 class PokerVoteOut(BaseModel):
@@ -141,6 +164,12 @@ class PokerQueueItemOut(BaseModel):
     # each task.
     task_description: str | None = None
     story_points: float | None
+    # The epic this task sits under — the root of its breakdown tree. None for
+    # standalone work. Lets a refinement session filter down to one epic at a
+    # time, which is how a room actually works through a backlog.
+    epic_task_id: int | None = None
+    epic_key: str | None = None
+    epic_title: str | None = None
     # The most recent round for this task, if any.
     round_status: str | None = None
     attempts: int = 0
@@ -157,6 +186,9 @@ class PokerSessionOut(ApiModel):
     facilitator_name: str | None = None
     deck: list[float] = []
     breakdown_points: list[float] = []
+    # The task on the table. None = nothing selected yet; the room is between
+    # estimates and waiting for the facilitator to choose.
+    active_task_id: int | None = None
     created_at: datetime | None = None
     closed_at: datetime | None = None
     # Rollup for the session list.

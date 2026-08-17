@@ -24,9 +24,9 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiError } from "@/lib/api";
-import { formatDateTime, shortSha } from "@/lib/format";
+import { formatDateTime, shortSha, taskLabel } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type { Milestone, Task, TaskDetail } from "@/types/api";
+import type { Milestone, Task, TaskDetail, TaskNode } from "@/types/api";
 
 /** Slide-over task detail bound to the ?task= search param (works from any tab). */
 export function TaskSheet() {
@@ -102,28 +102,27 @@ export function TaskSheet() {
               </div>
 
               <MilestonePicker task={task} />
+              <EpicPicker task={task} />
 
-              {/* Where this sits in a breakdown. Without it, a task created from
-                  an AI draft loses every trace of the epic it came from. */}
-              <div className="flex flex-wrap items-center gap-2">
-                {task.parent_key ? (
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
-                    onClick={() =>
-                      task.parent_id != null &&
-                      setParams((p) => {
-                        const next = new URLSearchParams(p);
-                        next.set("task", String(task.parent_id));
-                        return next;
-                      })
-                    }
-                  >
-                    <GitBranch className="size-3.5" />
-                    Part of <span className="font-mono">{task.parent_key}</span>
-                  </button>
-                ) : null}
-              </div>
+              {/* Kept alongside the picker, not replaced by it: setting the epic
+                  and walking up to it are different intentions. */}
+              {task.parent_key ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                  onClick={() =>
+                    task.parent_id != null &&
+                    setParams((p) => {
+                      const next = new URLSearchParams(p);
+                      next.set("task", String(task.parent_id));
+                      return next;
+                    })
+                  }
+                >
+                  <GitBranch className="size-3.5" />
+                  Open <span className="font-mono">{task.parent_key}</span>
+                </button>
+              ) : null}
               {task.description ? (
                 <div>
                   <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -189,6 +188,7 @@ export function TaskSheet() {
 
 /** Sentinel: Radix Select forbids an empty-string item value. */
 const NO_MILESTONE = "none";
+const NO_EPIC = "none";
 
 /**
  * Assign the task to a milestone from wherever it was opened — the board, the
@@ -237,6 +237,66 @@ function MilestonePicker({ task }: { task: TaskDetail }) {
           {milestones.map((m) => (
             <SelectItem key={m.id} value={String(m.id)}>
               {m.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+/**
+ * Attach this task to an epic, or detach it.
+ *
+ * Mirrors MilestonePicker above: same shape, same invalidation discipline. The
+ * candidate list is the tree's roots minus this task — everything below a task
+ * has a parent, so no descendant can appear as a root and offer itself as a
+ * cycle. The server still guards the rest (backlog._check_parent).
+ */
+function EpicPicker({ task }: { task: TaskDetail }) {
+  const qc = useQueryClient();
+  const projectId = task.project_id;
+
+  const { data: tree } = useQuery({
+    queryKey: qk.taskTree(projectId),
+    queryFn: () => api.get<TaskNode[]>(`/projects/${projectId}/task-tree`),
+    enabled: Number.isFinite(projectId),
+  });
+
+  const assign = useMutation({
+    mutationFn: (parentId: number | null) =>
+      api.patch<Task>(`/tasks/${task.id}`, { parent_id: parentId }),
+    onSuccess: (_task, parentId) => {
+      qc.invalidateQueries({ queryKey: qk.task(task.id) });
+      qc.invalidateQueries({ queryKey: qk.taskTree(projectId) });
+      // Re-parenting changes what counts as a container, which the board's
+      // Leaves filter and every points rollup read.
+      qc.invalidateQueries({ queryKey: qk.board(projectId) });
+      qc.invalidateQueries({ queryKey: qk.milestones(projectId) });
+      toast.success(parentId === null ? "Removed from its epic" : "Epic updated");
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not set the epic"),
+  });
+
+  const options = (tree ?? []).filter((n) => n.id !== task.id);
+  if (!options.length) return null;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="shrink-0 text-xs text-muted-foreground">Epic</span>
+      <Select
+        value={task.parent_id === null ? NO_EPIC : String(task.parent_id)}
+        disabled={assign.isPending}
+        onValueChange={(v) => assign.mutate(v === NO_EPIC ? null : Number(v))}
+      >
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_EPIC}>None</SelectItem>
+          {options.map((n) => (
+            <SelectItem key={n.id} value={String(n.id)}>
+              {taskLabel(n)} · {n.title}
             </SelectItem>
           ))}
         </SelectContent>

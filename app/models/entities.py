@@ -641,6 +641,18 @@ class PokerSession(Base, TimestampMixin):
     facilitator_member_id: Mapped[int | None] = mapped_column(
         ForeignKey("members.id", ondelete="SET NULL")
     )
+    # The task currently on the table. Explicit rather than "whatever is first
+    # in the queue": the room decides what it estimates next, so finishing one
+    # task doesn't drag an unrelated one in front of people who were still
+    # talking. NULL means nothing is selected — the queue is waiting on the
+    # facilitator, which is a legitimate resting state, not an error.
+    #
+    # A task, not a round, so a re-vote keeps the same task on the table. Stale
+    # values are harmless: build_detail only honours it while that task's newest
+    # round is still unsettled.
+    active_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL")
+    )
     # Deck snapshotted from StoryPointScale at creation, so editing the project
     # scale mid-session can't change the cards under the players.
     deck: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
@@ -670,6 +682,12 @@ class PokerRound(Base, TimestampMixin):
     )
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # Queue order within the session, and therefore which task the room votes on
+    # next — `build_detail` takes the first unsettled round in this order. Every
+    # attempt of a task carries the same rank, so a re-vote keeps the slot the
+    # queue was dragged to. Server-owned: clients move positionally
+    # ("after task N") and never send a rank, exactly like Task.rank.
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # voting   -> vote values are withheld from the API payload
     # revealed -> values visible; applied -> written to Task.story_points
     status: Mapped[str] = mapped_column(

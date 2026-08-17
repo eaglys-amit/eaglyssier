@@ -19,6 +19,7 @@ from app.schemas.milestone import (
     GenerateOut,
     GeneratePreviewOut,
     MilestoneCreateIn,
+    MilestoneEpicGroupOut,
     MilestoneOut,
     MilestonePatchIn,
     MilestoneTasksIn,
@@ -109,6 +110,22 @@ def milestone_tasks(project_id: int, milestone_id: int, db: Session = Depends(ge
     get_or_404(db, Project, project_id)
     milestone_svc.get_milestone(db, project_id, milestone_id)
     return milestone_svc.milestone_tasks(db, milestone_id)
+
+
+@router.get(
+    "/projects/{project_id}/milestones/{milestone_id}/epics",
+    response_model=list[MilestoneEpicGroupOut],
+)
+def milestone_epics(project_id: int, milestone_id: int, db: Session = Depends(get_db)):
+    """The same linked work as `/tasks`, grouped by the epic it belongs to.
+
+    Grouping is derived from the task tree on read, so it can't drift from the
+    board. One epic's tasks routinely span several sprints — the sprint is a
+    field on each row here, not the grouping.
+    """
+    get_or_404(db, Project, project_id)
+    milestone_svc.get_milestone(db, project_id, milestone_id)
+    return milestone_svc.milestone_epics(db, milestone_id)
 
 
 @router.post(

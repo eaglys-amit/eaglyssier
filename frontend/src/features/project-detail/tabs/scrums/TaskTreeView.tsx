@@ -1,4 +1,5 @@
-import { ChevronDown, GitBranch, Pencil, Trash2 } from "lucide-react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { ChevronDown, GitBranch, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -7,9 +8,19 @@ import { taskCategoryBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatPoints, taskLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { TaskNode } from "@/types/api";
+import type { Milestone, TaskNode } from "@/types/api";
+
+/** Sentinel: a Radix Select value can't be null or an empty string. */
+const NO_MILESTONE = "none";
 
 /**
  * The board's hierarchy view.
@@ -23,13 +34,21 @@ import type { TaskNode } from "@/types/api";
 export function TaskTreeView({
   nodes,
   depth = 0,
+  draggable = false,
+  milestones,
   onEdit,
   onDelete,
+  onSetMilestone,
 }: {
   nodes: TaskNode[];
   depth?: number;
+  /** Wired by the owner, which also hosts the DndContext this reports into. */
+  draggable?: boolean;
+  /** Omitted = no milestone control; the tree is usable without one. */
+  milestones?: Milestone[];
   onEdit: (task: TaskNode) => void;
   onDelete: (task: TaskNode, cascade: boolean) => void;
+  onSetMilestone?: (task: TaskNode, milestoneId: number | null) => void;
 }) {
   if (!nodes.length) return null;
   return (
@@ -39,8 +58,11 @@ export function TaskTreeView({
           key={node.id}
           node={node}
           depth={depth}
+          draggable={draggable}
+          milestones={milestones}
           onEdit={onEdit}
           onDelete={onDelete}
+          onSetMilestone={onSetMilestone}
         />
       ))}
     </div>
@@ -50,17 +72,30 @@ export function TaskTreeView({
 function TaskTreeNode({
   node,
   depth,
+  draggable,
+  milestones,
   onEdit,
   onDelete,
+  onSetMilestone,
 }: {
   node: TaskNode;
   depth: number;
+  draggable: boolean;
+  milestones?: Milestone[];
   onEdit: (task: TaskNode) => void;
   onDelete: (task: TaskNode, cascade: boolean) => void;
+  onSetMilestone?: (task: TaskNode, milestoneId: number | null) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [, setParams] = useSearchParams();
   const isContainer = node.children.length > 0;
+
+  // Draggable and droppable at once: every row can be picked up, and every row
+  // can receive — dropping onto a leaf is how a leaf becomes a parent. The
+  // owner rejects a drop into the dragged row's own subtree.
+  const drag = useDraggable({ id: node.id, disabled: !draggable });
+  const drop = useDroppable({ id: node.id, disabled: !draggable });
+  const isTarget = drop.isOver && drag.active?.id !== node.id;
 
   const openSheet = () =>
     setParams((p) => {
@@ -70,8 +105,34 @@ function TaskTreeNode({
     });
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="rounded-lg border bg-card">
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      ref={drop.setNodeRef}
+      className={cn(
+        "rounded-lg border bg-card",
+        // The row the cursor would drop into. A ring rather than a fill: the row
+        // already carries status colours that a background would fight.
+        isTarget && "ring-2 ring-primary ring-offset-1",
+        drag.isDragging && "opacity-40",
+      )}
+    >
       <div className="flex items-start gap-2 px-2.5 py-2">
+        {draggable ? (
+          // Grip-only activator, as on the board's cards: a row-wide one would
+          // swallow the title link and the buttons beside it.
+          <button
+            type="button"
+            ref={drag.setNodeRef}
+            className="mt-0.5 shrink-0 cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+            {...drag.attributes}
+            {...drag.listeners}
+          >
+            <GripVertical className="size-4" />
+            <span className="sr-only">Move {taskLabel(node)} to another epic</span>
+          </button>
+        ) : null}
+
         {isContainer ? (
           <CollapsibleTrigger className="group mt-0.5 shrink-0" aria-label="Toggle subtasks">
             <ChevronDown className="size-4 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
@@ -134,6 +195,29 @@ function TaskTreeNode({
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">
+          {/* Top level only. Linking cascades to the subtree server-side, so
+              offering it on a child too would be two controls fighting over the
+              same rows. */}
+          {milestones?.length && onSetMilestone && depth === 0 ? (
+            <Select
+              value={node.milestone_id == null ? NO_MILESTONE : String(node.milestone_id)}
+              onValueChange={(v) =>
+                onSetMilestone(node, v === NO_MILESTONE ? null : Number(v))
+              }
+            >
+              <SelectTrigger size="sm" className="mr-1 h-7 w-36 text-xs">
+                <SelectValue placeholder="No milestone" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_MILESTONE}>No milestone</SelectItem>
+                {milestones.map((m) => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
           <Button variant="ghost" size="icon-sm" onClick={() => onEdit(node)}>
             <Pencil className="size-3.5" />
             <span className="sr-only">Edit {taskLabel(node)}</span>
@@ -164,8 +248,11 @@ function TaskTreeNode({
             <TaskTreeView
               nodes={node.children}
               depth={depth + 1}
+              draggable={draggable}
+              milestones={milestones}
               onEdit={onEdit}
               onDelete={onDelete}
+              onSetMilestone={onSetMilestone}
             />
           </div>
         </CollapsibleContent>

@@ -1,7 +1,7 @@
 import { DndContext, DragOverlay, closestCorners } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   Inbox,
   LayoutList,
@@ -21,7 +21,6 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -31,7 +30,6 @@ import {
 } from "@/components/ui/select";
 import { api, ApiError } from "@/lib/api";
 import { formatPoints } from "@/lib/format";
-import { qk } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import type {
   BacklogSprintBucket,
@@ -39,7 +37,6 @@ import type {
   SprintCompleteOut,
   SprintCreateIn,
   Task,
-  TaskNode,
 } from "@/types/api";
 
 import { IntegrationSyncBar } from "../data/IntegrationSync";
@@ -49,7 +46,6 @@ import { DropColumn } from "./DropColumn";
 import { SprintDialog } from "./SprintDialog";
 import { TaskCard } from "./TaskCard";
 import { TaskDialog } from "./TaskDialog";
-import { TaskTreeView } from "./TaskTreeView";
 import { useBoard } from "./useBoard";
 
 // Module-level so the array identity is stable across renders, as in
@@ -93,18 +89,9 @@ export function BoardView({
   const [sprintDialog, setSprintDialog] = useState<{ sprint: BacklogSprintBucket | null } | null>(
     null,
   );
-  // Flat is the planning surface (drag, rank, move-to-sprint act on it); tree
-  // is where a breakdown's epic still reads as an epic once its tasks exist.
-  const [layout, setLayout] = useState<"flat" | "tree">("flat");
   // Backlog scope. Both on by default — see visibleBacklog for why.
   const [todoOnly, setTodoOnly] = useState(true);
   const [leavesOnly, setLeavesOnly] = useState(true);
-
-  const { data: tree } = useQuery({
-    queryKey: qk.taskTree(projectId),
-    queryFn: () => api.get<TaskNode[]>(`/projects/${projectId}/task-tree`),
-    enabled: layout === "tree",
-  });
 
   const sprints = board?.sprints ?? [];
   // Fall back to the first sprint so the right pane is never empty just because
@@ -193,25 +180,20 @@ export function BoardView({
    *
    * Containers are out because their points roll up from their children: a
    * generated epic in this list is a row nobody can estimate or copy, and it
-   * was the reason every epic appeared to be sitting unplanned. Tree layout
-   * still shows the structure.
+   * was the reason every epic appeared to be sitting unplanned. The Epics view
+   * is where that structure lives now.
    *
    * Both filters are switchable and the payload is always the whole backlog, so
    * no task is ever unreachable from the only surface that can plan it.
    */
   const visibleBacklog = useMemo(() => {
     const all = board?.backlog ?? [];
-    // Tree layout renders whole subtrees from its own endpoint, where hiding a
-    // container would hide its children too. The chips are flat-only, so the
-    // filter is as well — otherwise the header count would describe a list the
-    // tree isn't showing.
-    if (layout === "tree") return all;
     return all.filter(
       (t) =>
         (!todoOnly || t.status_category === "todo") &&
         (!leavesOnly || (subtaskCounts.get(t.id) ?? 0) === 0),
     );
-  }, [board, layout, todoOnly, leavesOnly, subtaskCounts]);
+  }, [board, todoOnly, leavesOnly, subtaskCounts]);
 
   // Points for what's actually on screen, by the same containers-score-zero
   // rule the server uses (see backlog.build_backlog). Without this the header
@@ -237,7 +219,8 @@ export function BoardView({
   const busy =
     moveTask.isPending || patchTask.isPending || deleteTask.isPending || linkKey.isPending;
 
-  // Only ever > 0 in flat layout; the chips are hidden in tree.
+  // What the two chips are holding back — reported in the header so a short
+  // list never reads as work having gone missing.
   const hiddenCount = board.backlog.length - visibleBacklog.length;
 
   /** Reorder within the current list by re-anchoring one slot up or down. */
@@ -250,32 +233,6 @@ export function BoardView({
     // down means landing after the neighbour itself.
     const anchor = direction === "up" ? (list[index - 2]?.id ?? null) : list[index + 1].id;
     moveTask.mutate({ taskId: task.id, body: { sprint_id: task.sprint_id, after_task_id: anchor } });
-  };
-
-  const treeFor = (sprintId: number | null) =>
-    (tree ?? []).filter((n) => (n.sprint_id ?? null) === sprintId);
-
-  const editFromTree = (node: TaskNode) =>
-    setTaskDialog({ task: node as unknown as Task, parent: null });
-
-  const renderPane = (
-    list: Task[],
-    sprintId: number | null,
-    droppableId: string,
-    emptyNode: React.ReactNode,
-  ) => {
-    if (layout === "tree") {
-      const roots = treeFor(sprintId);
-      if (!roots.length) return emptyNode;
-      return (
-        <TaskTreeView
-          nodes={roots}
-          onEdit={editFromTree}
-          onDelete={(node, cascade) => deleteTask.mutate({ taskId: node.id, cascade })}
-        />
-      );
-    }
-    return renderList(list, droppableId, emptyNode);
   };
 
   const renderList = (list: Task[], droppableId: string, emptyNode: React.ReactNode) => (
@@ -365,37 +322,24 @@ export function BoardView({
                     <RefreshCw className={cn("size-3.5", isFetching && "animate-spin")} />
                     <span className="sr-only">Reload the board</span>
                   </Button>
-                  {/* Scope chips, only meaningful over the flat list — the tree
-                      is built from its own endpoint and shows whole subtrees. */}
-                  {layout === "flat" ? (
-                    <>
-                      <Button
-                        size="xs"
-                        variant={todoOnly ? "secondary" : "ghost"}
-                        aria-pressed={todoOnly}
-                        title="Show only To Do tasks — work already in progress or done isn't waiting to be planned."
-                        onClick={() => setTodoOnly((on) => !on)}
-                      >
-                        To Do
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant={leavesOnly ? "secondary" : "ghost"}
-                        aria-pressed={leavesOnly}
-                        title="Hide epics and other containers — their points roll up from their children, so they can't be estimated or copied on their own."
-                        onClick={() => setLeavesOnly((on) => !on)}
-                      >
-                        Leaves
-                      </Button>
-                    </>
-                  ) : null}
-                  {/* Scopes both panes — the two halves must always agree. */}
-                  <Tabs value={layout} onValueChange={(v) => setLayout(v as "flat" | "tree")}>
-                    <TabsList>
-                      <TabsTrigger value="flat">Flat</TabsTrigger>
-                      <TabsTrigger value="tree">Tree</TabsTrigger>
-                    </TabsList>
-                  </Tabs>
+                  <Button
+                    size="xs"
+                    variant={todoOnly ? "secondary" : "ghost"}
+                    aria-pressed={todoOnly}
+                    title="Show only To Do tasks — work already in progress or done isn't waiting to be planned."
+                    onClick={() => setTodoOnly((on) => !on)}
+                  >
+                    To Do
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant={leavesOnly ? "secondary" : "ghost"}
+                    aria-pressed={leavesOnly}
+                    title="Hide epics and other containers — their points roll up from their children. See the Epics view for the structure they hold."
+                    onClick={() => setLeavesOnly((on) => !on)}
+                  >
+                    Leaves
+                  </Button>
                   <Button
                     size="xs"
                     variant="outline"
@@ -406,9 +350,8 @@ export function BoardView({
                 </div>
               }
             >
-              {renderPane(
+              {renderList(
                 visibleBacklog,
-                null,
                 BACKLOG_DROPPABLE,
                 hiddenCount > 0 ? (
                   // The list isn't empty, the filter just matched nothing —
@@ -514,9 +457,8 @@ export function BoardView({
               }
             >
               {active ? (
-                renderPane(
+                renderList(
                   active.tasks,
-                  active.sprint_id,
                   sprintDroppable(active.sprint_id),
                   <EmptyState
                     icon={LayoutList}
@@ -551,7 +493,7 @@ export function BoardView({
             onOpenChange={(open) => {
               if (!open) setTaskDialog(null);
             }}
-            task={taskDialog.task}
+            taskId={taskDialog.task?.id ?? null}
             parent={taskDialog.parent}
             defaultSprintId={active?.sprint_id ?? null}
             busy={createTask.isPending || patchTask.isPending}
