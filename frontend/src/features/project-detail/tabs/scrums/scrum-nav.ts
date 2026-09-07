@@ -1,17 +1,10 @@
-import {
-  GitBranch,
-  LayoutList,
-  MessageSquare,
-  Spade,
-  Sparkles,
-  TrendingUp,
-} from "lucide-react";
+import { GitBranch, LayoutList, MessageSquare, TrendingUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 /**
- * Sub-views of the Scrums tab, selected by `?view=`. Single source of truth for
- * the segmented control and the view union, the way settings-nav.ts is for the
- * setup pages.
+ * Sub-views of the Scrums & Epics tab, selected by `?view=`. Single source of
+ * truth for the segmented control and the view union, the way settings-nav.ts is
+ * for the setup pages.
  *
  * The backlog and sprint planning are deliberately ONE view: planning is moving
  * work out of the backlog into a sprint while a commitment meter tracks you
@@ -23,14 +16,13 @@ import type { LucideIcon } from "lucide-react";
  * inside a pane headed "Backlog" kept showing done work from sprints. Structure
  * is a whole-project question, so it gets a whole-project view.
  *
- * `ai` drafts a work tree but does NOT manage the documents it reads — those are
- * project-scoped, so upload and the file list live in the Documents tab.
+ * Planning poker and AI breakdown used to be here too. They produce work rather
+ * than arrange it, so they moved to the Sprint Planning page — see
+ * sprint-planning-nav.ts — reached from this tab's title bar.
  */
 export const SCRUM_VIEWS = [
   { key: "board", label: "Board", icon: LayoutList, ready: true },
   { key: "epics", label: "Epics", icon: GitBranch, ready: true },
-  { key: "poker", label: "Poker", icon: Spade, ready: true },
-  { key: "ai", label: "AI Breakdown", icon: Sparkles, ready: true },
   { key: "charts", label: "Charts", icon: TrendingUp, ready: true },
   { key: "notes", label: "Standups & Retro", icon: MessageSquare, ready: false },
 ] as const satisfies ReadonlyArray<{

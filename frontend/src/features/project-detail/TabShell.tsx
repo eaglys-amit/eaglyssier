@@ -2,11 +2,11 @@ import type { ReactNode } from "react";
 
 import { PageHeader } from "@/components/layout/PageHeader";
 
-import { PROJECT_TABS, type TabKey } from "@/features/project-detail/tabs-nav";
+import { ALL_TABS, type TabKey } from "@/features/project-detail/tabs-nav";
 
 /**
  * The frame every analysis tab opens with: a full-bleed title bar naming the
- * tab, then the padded body. The title, icon, and blurb come from PROJECT_TABS,
+ * tab, then the padded body. The title, icon, and blurb come from ALL_TABS,
  * so a tab only supplies its own controls — whatever used to sit in a toolbar
  * row of its own goes in `actions`.
  *
@@ -22,7 +22,7 @@ export function TabShell({
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  const meta = PROJECT_TABS.find((t) => t.key === tab)!;
+  const meta = ALL_TABS.find((t) => t.key === tab)!;
 
   return (
     // h-full + min-h-0 keeps the full-height contract the Data and Scrums tabs

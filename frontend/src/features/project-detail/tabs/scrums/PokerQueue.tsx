@@ -28,12 +28,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatPoints } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { PokerQueueItem, PokerSessionDetail } from "@/types/api";
 
 /**
- * The session queue: what's been estimated, what's on the table, and what's left.
+ * The session queue: what still needs a number, what's on the table, and where in
+ * the running order each one sits.
+ *
+ * Tasks the room has agreed leave this list for EstimatedTasks below it, so the
+ * two partition the session rather than listing the same row twice.
  *
  * Two facilitator-only controls, and they do different jobs. **Estimate this**
  * puts a task on the table right now — nothing is selected automatically, so
@@ -45,7 +48,7 @@ import type { PokerQueueItem, PokerSessionDetail } from "@/types/api";
  * it on the table a single gesture.
  */
 
-type StatusFilter = "all" | "pending" | "revealed" | "applied";
+type StatusFilter = "all" | "pending" | "revealed";
 
 /** An AI proposal nobody has agreed yet — the queue's most interesting row. */
 function isProposed(item: PokerQueueItem): boolean {
@@ -74,6 +77,16 @@ export function PokerQueue({
   // enough room for the gesture to be anything but a mis-scroll.
   const [wide, setWide] = useState(false);
 
+  /**
+   * The queue proper. An agreed estimate is not queued work any more — it's a
+   * record, and it's listed as one in EstimatedTasks below. Everything here
+   * reads from this rather than from session.queue.
+   */
+  const pending = useMemo(
+    () => session.queue.filter((q) => q.round_status !== "applied"),
+    [session.queue],
+  );
+
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 64rem)");
     const apply = () => setWide(mq.matches);
@@ -90,7 +103,7 @@ export function PokerQueue({
    */
   const epics = useMemo(() => {
     const seen = new Map<number, { id: number; label: string }>();
-    for (const item of session.queue) {
+    for (const item of pending) {
       if (item.epic_task_id == null || seen.has(item.epic_task_id)) continue;
       seen.set(item.epic_task_id, {
         id: item.epic_task_id,
@@ -98,21 +111,20 @@ export function PokerQueue({
       });
     }
     return [...seen.values()];
-  }, [session.queue]);
+  }, [pending]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return session.queue.filter((item) => {
+    return pending.filter((item) => {
       if (epic && String(item.epic_task_id ?? "") !== epic) return false;
       if (proposedOnly && !isProposed(item)) return false;
       if (status === "pending" && item.round_status !== "voting") return false;
       if (status === "revealed" && item.round_status !== "revealed") return false;
-      if (status === "applied" && item.round_status !== "applied") return false;
       if (!needle) return true;
       return [item.task_key, item.task_title, item.task_description]
         .some((field) => field?.toLowerCase().includes(needle));
     });
-  }, [session.queue, status, epic, proposedOnly, search]);
+  }, [pending, status, epic, proposedOnly, search]);
 
   const filtering =
     status !== "all" || epic !== "" || proposedOnly || search.trim() !== "";
@@ -132,7 +144,7 @@ export function PokerQueue({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const byId = new Map(session.queue.map((q) => [q.task_id, q]));
+  const byId = new Map(pending.map((q) => [q.task_id, q]));
   const label = (taskId: number) =>
     byId.get(taskId)?.task_key ?? `#${taskId}`;
 
@@ -142,7 +154,11 @@ export function PokerQueue({
 
     const taskId = Number(active.id);
     const overId = Number(over.id);
-    const order = session.queue.map((q) => q.task_id);
+    // The pending order, not the whole queue: that makes after_task_id a row you
+    // can actually see, so the drop lands where it looks like it will. An agreed
+    // task sitting between two pending ranks gets shuffled behind the drop, which
+    // costs nothing — it has no running order left to respect.
+    const order = pending.map((q) => q.task_id);
     const from = order.indexOf(taskId);
     const to = order.indexOf(overId);
     if (from === -1 || to === -1) return;
@@ -166,7 +182,7 @@ export function PokerQueue({
     onDragCancel: ({ active }) => `Cancelled. ${label(Number(active.id))} stayed put.`,
   };
 
-  if (!session.queue.length) return null;
+  if (!pending.length) return null;
 
   const rows = filtered.map((item) => (
     <QueueRow
@@ -176,14 +192,9 @@ export function PokerQueue({
       active={item.task_id === session.active_task_id}
       // Redundant once the list is already narrowed to one epic.
       showEpic={epic === ""}
-      // Nothing to select on a task that's already estimated — it would need a
-      // re-vote first — or on the one already on the table.
-      canSelect={
-        isHost &&
-        !busy &&
-        item.round_status !== "applied" &&
-        item.task_id !== session.active_task_id
-      }
+      // Nothing to select on the task already on the table. Estimated tasks
+      // aren't in this list at all — they'd need a re-vote to come back.
+      canSelect={isHost && !busy && item.task_id !== session.active_task_id}
       onSelect={() => onSelect(item.task_id)}
     />
   ));
@@ -195,7 +206,7 @@ export function PokerQueue({
           Queue
         </h3>
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {filtering ? `${filtered.length}/${session.queue.length}` : session.queue.length}
+          {filtering ? `${filtered.length}/${pending.length}` : pending.length}
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -245,7 +256,6 @@ export function PokerQueue({
               <SelectItem value="all">Any status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="revealed">Revealed</SelectItem>
-              <SelectItem value="applied">Estimated</SelectItem>
             </SelectContent>
           </Select>
 
@@ -378,15 +388,9 @@ function QueueRow({
           AI proposed
         </Badge>
       ) : null}
-      {item.round_status === "applied" ? (
-        <span className="font-mono text-xs tabular-nums text-success">
-          {formatPoints(item.story_points)} pts
-        </span>
-      ) : (
-        <span className="text-xs text-muted-foreground">
-          {item.round_status === "revealed" ? "revealed" : "pending"}
-        </span>
-      )}
+      <span className="text-xs text-muted-foreground">
+        {item.round_status === "revealed" ? "revealed" : "pending"}
+      </span>
     </div>
   );
 }

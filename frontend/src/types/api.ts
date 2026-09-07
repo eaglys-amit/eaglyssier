@@ -1067,6 +1067,12 @@ export interface PokerCandidates {
   in_sprints: PokerCandidate[];
   /** Have points, but only because an AI breakdown proposed them. */
   proposed: PokerCandidate[];
+  /**
+   * Epic-typed and childless. Behind their own checkbox: an epic is structure,
+   * and one with subtasks takes its points from them, so only the childless
+   * ones can carry an estimate that any rollup counts.
+   */
+  epics: PokerCandidate[];
 }
 
 // ------------------------------------------------------------- milestones

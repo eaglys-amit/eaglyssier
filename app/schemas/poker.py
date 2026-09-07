@@ -26,6 +26,10 @@ class PokerSessionCreateIn(BaseModel):
     # Also re-estimate tasks whose points an AI breakdown proposed but the team
     # never agreed. They look estimated, so nothing else would surface them.
     include_proposed: bool = False
+    # Also queue epic-typed tasks with no subtasks. Off because an epic is
+    # structure — the Epics view owns it — but one nobody has broken down yet is
+    # a work item, and it's the only kind of epic whose points a rollup counts.
+    include_epics: bool = False
     # Whoever starts the session facilitates it: only they may reveal.
     facilitator_member_id: int | None = None
 
@@ -48,6 +52,9 @@ class PokerCandidatesOut(BaseModel):
     in_sprints: list[PokerCandidateOut] = []
     # Have points, but only because an AI breakdown proposed them.
     proposed: list[PokerCandidateOut] = []
+    # Epic-typed and childless. Behind their own checkbox, so they are counted
+    # apart from the buckets the other boxes control.
+    epics: list[PokerCandidateOut] = []
 
 
 class PokerVoteIn(BaseModel):

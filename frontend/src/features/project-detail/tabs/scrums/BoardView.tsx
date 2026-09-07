@@ -3,6 +3,7 @@ import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMutation } from "@tanstack/react-query";
 import {
+  GitBranch,
   Inbox,
   LayoutList,
   ListPlus,
@@ -46,6 +47,8 @@ import { DropColumn } from "./DropColumn";
 import { SprintDialog } from "./SprintDialog";
 import { TaskCard } from "./TaskCard";
 import { TaskDialog } from "./TaskDialog";
+import { ResetBacklogDialog } from "./ResetBacklogDialog";
+import { isEpicType } from "./task-kind";
 import { useBoard } from "./useBoard";
 
 // Module-level so the array identity is stable across renders, as in
@@ -65,10 +68,13 @@ export function BoardView({
   projectId,
   sprintId,
   onSelectSprint,
+  onOpenEpics,
 }: {
   projectId: number;
   sprintId: number | null;
   onSelectSprint: (id: number | null) => void;
+  /** Switch to the Epics view — the only place a backlog epic can be acted on. */
+  onOpenEpics: () => void;
 }) {
   const {
     board,
@@ -79,6 +85,7 @@ export function BoardView({
     linkKey,
     deleteTask,
     moveTask,
+    resetBacklog,
     isFetching,
     invalidateAll,
   } = useBoard(projectId);
@@ -92,6 +99,9 @@ export function BoardView({
   // Backlog scope. Both on by default — see visibleBacklog for why.
   const [todoOnly, setTodoOnly] = useState(true);
   const [leavesOnly, setLeavesOnly] = useState(true);
+  // Off by default: the unestimated rows are the ones that still need a poker
+  // session, so hiding them by default would hide the work to be done.
+  const [estimatedOnly, setEstimatedOnly] = useState(false);
 
   const sprints = board?.sprints ?? [];
   // Fall back to the first sprint so the right pane is never empty just because
@@ -180,20 +190,34 @@ export function BoardView({
    *
    * Containers are out because their points roll up from their children: a
    * generated epic in this list is a row nobody can estimate or copy, and it
-   * was the reason every epic appeared to be sitting unplanned. The Epics view
-   * is where that structure lives now.
+   * was the reason every epic appeared to be sitting unplanned. Epic-typed rows
+   * are excluded outright rather than by this chip — see `plannable`.
    *
    * Both filters are switchable and the payload is always the whole backlog, so
    * no task is ever unreachable from the only surface that can plan it.
    */
+  /**
+   * Epics are never plannable work, so they are not in this panel's universe at
+   * all — no chip reveals them.
+   *
+   * A Jira epic has no sprint by construction, so its sitting in the backlog
+   * says nothing about whether it's planned: an epic whose every subtask is
+   * already in a sprint looked identical here to one nobody had started. The
+   * Epics view owns structure, and its children are what actually get planned.
+   */
+  const plannable = useMemo(
+    () => (board?.backlog ?? []).filter((t) => !isEpicType(t.issue_type)),
+    [board],
+  );
+
   const visibleBacklog = useMemo(() => {
-    const all = board?.backlog ?? [];
-    return all.filter(
+    return plannable.filter(
       (t) =>
         (!todoOnly || t.status_category === "todo") &&
-        (!leavesOnly || (subtaskCounts.get(t.id) ?? 0) === 0),
+        (!leavesOnly || (subtaskCounts.get(t.id) ?? 0) === 0) &&
+        (!estimatedOnly || t.story_points != null),
     );
-  }, [board, todoOnly, leavesOnly, subtaskCounts]);
+  }, [plannable, todoOnly, leavesOnly, estimatedOnly, subtaskCounts]);
 
   // Points for what's actually on screen, by the same containers-score-zero
   // rule the server uses (see backlog.build_backlog). Without this the header
@@ -207,6 +231,22 @@ export function BoardView({
     [visibleBacklog, subtaskCounts],
   );
 
+  /**
+   * What a reset would remove, split the way the server splits it. Counted over
+   * the whole backlog rather than the visible rows — the To Do and Leaves chips
+   * narrow the list, not the delete, so quoting the filtered count in the dialog
+   * would understate it.
+   */
+  const resetCounts = useMemo(() => {
+    const all = board?.backlog ?? [];
+    const local = all.filter((t) => t.source !== "sync");
+    return {
+      synced: all.length - local.length,
+      local: local.length,
+      ai: local.filter((t) => t.estimate_source === "ai").length,
+    };
+  }, [board]);
+
   const dnd = useBoardDnd({
     tasks: allTasks,
     onMove: (taskId, sprintId, afterTaskId) =>
@@ -219,9 +259,11 @@ export function BoardView({
   const busy =
     moveTask.isPending || patchTask.isPending || deleteTask.isPending || linkKey.isPending;
 
-  // What the two chips are holding back — reported in the header so a short
-  // list never reads as work having gone missing.
-  const hiddenCount = board.backlog.length - visibleBacklog.length;
+  // What the chips are holding back — reported in the header so a short list
+  // never reads as work having gone missing.
+  const hiddenCount = plannable.length - visibleBacklog.length;
+  // Reported apart from hiddenCount: these aren't filtered, they're elsewhere.
+  const epicCount = board.backlog.length - plannable.length;
 
   /** Reorder within the current list by re-anchoring one slot up or down. */
   const reorder = (list: Task[], task: Task, direction: "up" | "down") => {
@@ -292,6 +334,8 @@ export function BoardView({
             <SectionPanel
               title="Backlog"
               count={visibleBacklog.length}
+              // Epics are counted apart from the chips' hidden tally: they are
+              // not filtered out, they belong to another view.
               // The same Jira trigger the Data tab uses, in the slot SectionPanel
               // keeps for it. It belongs here because this is where the planning
               // flow ends: a task linked to a hand-made Jira issue is only
@@ -301,9 +345,16 @@ export function BoardView({
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">
                   {/* Both totals while filtering, plus what's hidden, so a
                       shorter list never reads as work having gone missing. */}
-                  {hiddenCount > 0
-                    ? `${formatPoints(visiblePoints)} pts ready · ${formatPoints(board.backlog_points)} pts unplanned · ${hiddenCount} hidden`
-                    : `${formatPoints(board.backlog_points)} pts unplanned`}
+                  {[
+                    hiddenCount > 0 ? `${formatPoints(visiblePoints)} pts ready` : null,
+                    `${formatPoints(board.backlog_points)} pts unplanned`,
+                    hiddenCount > 0 ? `${hiddenCount} hidden` : null,
+                    epicCount > 0
+                      ? `${epicCount} ${epicCount === 1 ? "epic" : "epics"} in Epics`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               }
               actions={
@@ -322,6 +373,15 @@ export function BoardView({
                     <RefreshCw className={cn("size-3.5", isFetching && "animate-spin")} />
                     <span className="sr-only">Reload the board</span>
                   </Button>
+                  {/* Beside the Sync control in this panel's header, because the
+                      two are one gesture: empty the backlog, then pull it fresh. */}
+                  <ResetBacklogDialog
+                    syncedCount={resetCounts.synced}
+                    localCount={resetCounts.local}
+                    aiCount={resetCounts.ai}
+                    busy={resetBacklog.isPending}
+                    onConfirm={(options) => resetBacklog.mutate(options)}
+                  />
                   <Button
                     size="xs"
                     variant={todoOnly ? "secondary" : "ghost"}
@@ -335,10 +395,19 @@ export function BoardView({
                     size="xs"
                     variant={leavesOnly ? "secondary" : "ghost"}
                     aria-pressed={leavesOnly}
-                    title="Hide epics and other containers — their points roll up from their children. See the Epics view for the structure they hold."
+                    title="Hide parent tasks — their points roll up from their children. Epics are never listed here; see the Epics view for the structure they hold."
                     onClick={() => setLeavesOnly((on) => !on)}
                   >
                     Leaves
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant={estimatedOnly ? "secondary" : "ghost"}
+                    aria-pressed={estimatedOnly}
+                    title="Show only tasks that already have points — the work that is ready to plan into a sprint."
+                    onClick={() => setEstimatedOnly((on) => !on)}
+                  >
+                    Estimated
                   </Button>
                   <Button
                     size="xs"
@@ -354,12 +423,27 @@ export function BoardView({
                 visibleBacklog,
                 BACKLOG_DROPPABLE,
                 hiddenCount > 0 ? (
-                  // The list isn't empty, the filter just matched nothing —
+                  // The list isn't empty, the chips just matched nothing —
                   // saying "nothing in the backlog" here would be a lie.
                   <EmptyState
                     icon={Inbox}
                     title="Nothing ready to plan"
-                    hint={`${hiddenCount} backlog ${hiddenCount === 1 ? "task is" : "tasks are"} hidden by the To Do and Leaves filters.`}
+                    hint={`${hiddenCount} backlog ${hiddenCount === 1 ? "task is" : "tasks are"} hidden by the chips above.`}
+                  />
+                ) : epicCount > 0 ? (
+                  // The commonest shape of an all-epic backlog: Jira gives
+                  // epics no sprint, so they land here while their subtasks are
+                  // already planned. Point at the view that can act on them
+                  // rather than leaving it looking like the sync failed.
+                  <EmptyState
+                    icon={GitBranch}
+                    title="No plannable work in the backlog"
+                    hint={`${epicCount} ${epicCount === 1 ? "epic is" : "epics are"} unplanned, but an epic is planned through its subtasks.`}
+                    action={
+                      <Button size="sm" variant="outline" onClick={onOpenEpics}>
+                        <GitBranch className="size-4" /> Go to Epics
+                      </Button>
+                    }
                   />
                 ) : (
                   <EmptyState

@@ -38,6 +38,7 @@ import type {
   PokerStats,
 } from "@/types/api";
 
+import { EstimatedTasks } from "./EstimatedTasks";
 import { PokerDeck } from "./PokerDeck";
 import { PokerQueue } from "./PokerQueue";
 import { usePokerMe } from "./usePokerMe";
@@ -69,6 +70,10 @@ export function PokerView({
   // On by default when there are any: an AI proposal that nobody challenged is
   // the single most likely wrong number in the backlog.
   const [includeProposed, setIncludeProposed] = useState(true);
+  // Off by default: an epic is structure, and the board keeps it out of the
+  // plannable backlog for that reason. Only childless ones are ever offered —
+  // see poker.candidate_tasks.
+  const [includeEpics, setIncludeEpics] = useState(false);
 
   const { data: queue } = useQuery({
     queryKey: qk.pokerCandidates(projectId),
@@ -91,6 +96,7 @@ export function PokerView({
         sprint_id: sprintId,
         include_sprint_tasks: includeSprintTasks,
         include_proposed: includeProposed,
+        include_epics: includeEpics,
       }),
     onSuccess: (session) => {
       qc.invalidateQueries({ queryKey: qk.pokerSessions(projectId) });
@@ -126,10 +132,12 @@ export function PokerView({
     const backlogCount = queue?.backlog.length ?? 0;
     const sprintCount = queue?.in_sprints.length ?? 0;
     const proposedCount = queue?.proposed.length ?? 0;
+    const epicCount = queue?.epics.length ?? 0;
     const total =
       backlogCount +
       (includeSprintTasks ? sprintCount : 0) +
-      (includeProposed ? proposedCount : 0);
+      (includeProposed ? proposedCount : 0) +
+      (includeEpics ? epicCount : 0);
 
     return (
       <div className="mx-auto max-w-lg py-8">
@@ -185,13 +193,34 @@ export function PokerView({
                   </span>
                 </span>
               </label>
+              <label className="flex items-start gap-2">
+                <Checkbox
+                  checked={includeEpics}
+                  onCheckedChange={(v) => setIncludeEpics(v === true)}
+                  className="mt-0.5"
+                  disabled={!epicCount}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Also epics with no subtasks</span>
+                    <span className="font-mono tabular-nums">{epicCount}</span>
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    An epic is structure, so the board plans it through its subtasks
+                    instead of listing it. One nobody has broken down yet is a work
+                    item in practice — and the only kind of epic whose points a
+                    rollup counts, which is why one that has subtasks is never
+                    offered here.
+                  </span>
+                </span>
+              </label>
             </div>
 
-            {/* Containers are excluded everywhere; saying so here saves the
-                "why is my epic missing" question. */}
+            {/* Says which containers are excluded unconditionally, now that the
+                childless epics have a box of their own above. */}
             <p className="text-xs text-muted-foreground">
-              Epics and other parent tasks are left out: their points roll up from their
-              children, so estimating them would count the same work twice.
+              Parent tasks are left out: their points roll up from their children, so
+              estimating them would count the same work twice.
             </p>
 
             <Button
@@ -294,8 +323,8 @@ function ActiveSession({
   const myVote = round?.votes.find((v) => v.member_id === meId) ?? null;
   const voting = round?.status === "voting";
   const voted = round?.votes.length ?? 0;
-  // Still estimable, in queue order — so "the next one" means the same thing
-  // here as it does in the list below.
+  // Still estimable, in queue order — the same rows PokerQueue lists below, so
+  // "the next one" means the same thing here as it does there.
   const remaining = session.queue.filter((q) => q.round_status !== "applied");
   const next = remaining[0] ?? null;
   // No facilitator (a pre-lock session, or theirs was deleted) falls back to
@@ -442,6 +471,10 @@ function ActiveSession({
         }
         onSelect={(taskId) => selectTask.mutate(taskId)}
       />
+
+      {/* The other half of the same list: the Queue is what still needs a number,
+          this is what the room agreed. */}
+      <EstimatedTasks projectId={projectId} session={session} />
     </div>
   );
 }

@@ -102,13 +102,16 @@ def create_session(
             project_id,
             include_sprint_tasks=data.include_sprint_tasks,
             include_proposed=data.include_proposed,
+            include_epics=data.include_epics,
         )
     ]
     if not task_ids:
         raise HTTPException(
             409,
             "Nothing in the backlog needs an estimate."
-            if not (data.include_sprint_tasks or data.include_proposed)
+            if not (
+                data.include_sprint_tasks or data.include_proposed or data.include_epics
+            )
             else "Nothing matches that scope — every task already has an agreed estimate.",
         )
     # Reject foreign ids up front rather than opening a session with a broken queue.
@@ -161,6 +164,7 @@ def candidate_tasks(
     *,
     include_sprint_tasks: bool = False,
     include_proposed: bool = False,
+    include_epics: bool = False,
 ) -> list[Task]:
     """Unestimated work the room could put on the table, in board order.
 
@@ -182,6 +186,12 @@ def candidate_tasks(
     Leaves only, as everywhere: a container's points roll up from its children,
     so putting an epic on the table would ask the room to estimate the same
     work twice.
+
+    ``include_epics`` re-admits epic-*typed* tasks, which are otherwise held back
+    even when childless. An epic is structure, and the board keeps it out of the
+    plannable backlog for that reason; but an epic nobody has broken down yet is
+    a work item in practice, and ``leaf_only`` above already restricts this to
+    the childless ones — the only epics whose points any rollup actually counts.
     """
     # Either there is no estimate at all, or there is one the team never agreed.
     estimate_state = Task.story_points.is_(None)
@@ -194,6 +204,14 @@ def candidate_tasks(
         else Task.sprint_id.is_(None)
     )
     stmt = select(Task).where(Task.project_id == project_id, estimate_state, placement)
+    if not include_epics:
+        # Structure, not a work item. Held back by type rather than by shape:
+        # leaf_only lets a childless epic through, and it would then arrive on
+        # the table as something to estimate. Mirrors the board's rule so the
+        # two surfaces can't disagree about what is estimable.
+        stmt = stmt.where(
+            or_(Task.issue_type.is_(None), func.lower(Task.issue_type) != "epic")
+        )
     return list(
         db.execute(tasks_svc.leaf_only(stmt).order_by(Task.rank, Task.id)).scalars().all()
     )
@@ -714,13 +732,17 @@ def build_detail(
 
 
 def build_candidates(db: Session, project_id: int) -> PokerCandidatesOut:
-    """Split the estimable work into backlog vs already-in-a-sprint.
+    """Split the estimable work into the buckets the start card's checkboxes control.
 
     The UI shows both counts up front: a session that silently queues thirty
     tickets is one nobody finishes.
     """
     rows = candidate_tasks(
-        db, project_id, include_sprint_tasks=True, include_proposed=True
+        db,
+        project_id,
+        include_sprint_tasks=True,
+        include_proposed=True,
+        include_epics=True,
     )
     names = dict(
         db.execute(
@@ -737,9 +759,14 @@ def build_candidates(db: Session, project_id: int) -> PokerCandidatesOut:
             sprint_name=names.get(task.sprint_id) if task.sprint_id else None,
             proposed_points=task.story_points,
         )
+        # An epic goes in its own bucket first, whatever else is true of it: it
+        # is behind its own checkbox, so it must not inflate the counts beside
+        # the boxes that don't control it.
+        if (task.issue_type or "").lower() == "epic":
+            out.epics.append(item)
         # An AI proposal is its own bucket wherever it sits: the question there
         # is "do we agree with the model", not "does this need a number".
-        if task.estimate_source == "ai" and task.story_points is not None:
+        elif task.estimate_source == "ai" and task.story_points is not None:
             out.proposed.append(item)
         elif task.sprint_id is None:
             out.backlog.append(item)

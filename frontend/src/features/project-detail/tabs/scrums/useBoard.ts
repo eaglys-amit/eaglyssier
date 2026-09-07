@@ -125,6 +125,55 @@ export function useBoard(projectId: number) {
     onError: (err: ApiError) => toast.error(err.detail || "Could not move the tasks"),
   });
 
+  /**
+   * Send a set of tasks to the backlog as one contiguous block.
+   *
+   * The same bulk-move as above, and the reason it's separate is the wording:
+   * this is what poker's estimated list saves, and "Moved 7 tasks" doesn't say
+   * where they went. bulk_move re-ranks everything it touches, so the set lands
+   * together rather than scattered through the backlog by whatever rank each
+   * task happened to hold.
+   */
+  const saveToBacklog = useMutation({
+    mutationFn: (taskIds: number[]) =>
+      api.post<Task[]>(`/projects/${projectId}/tasks/bulk-move`, {
+        task_ids: taskIds,
+        sprint_id: null,
+      } satisfies BulkMoveIn),
+    onSuccess: (moved) => {
+      invalidateAll();
+      toast.success(
+        `Saved ${moved.length} ${moved.length === 1 ? "task" : "tasks"} to the backlog`,
+      );
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not save to the backlog"),
+  });
+
+  /**
+   * Clear the backlog so a fresh sync can refill it.
+   *
+   * `includeLocal` is the difference between a reset you can undo with a sync
+   * button and one you can't: without it the server spares hand-made and
+   * AI-generated tasks, which no re-sync can rebuild. The count comes from the
+   * caller because it already has the board loaded and can say exactly what it
+   * asked to remove.
+   */
+  const resetBacklog = useMutation({
+    mutationFn: ({ includeLocal }: { includeLocal: boolean; count: number }) =>
+      api.delete(
+        `/projects/${projectId}/backlog${includeLocal ? "?include_local=true" : ""}`,
+      ),
+    onSuccess: (_data, { count }) => {
+      invalidateAll();
+      toast.success(
+        count
+          ? `Removed ${count} backlog ${count === 1 ? "task" : "tasks"} — sync Jira to pull them fresh`
+          : "Nothing in the backlog to remove",
+      );
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not reset the backlog"),
+  });
+
   return {
     board: board.data,
     isPending: board.isPending,
@@ -139,6 +188,8 @@ export function useBoard(projectId: number) {
     deleteTask,
     moveTask,
     bulkMove,
+    saveToBacklog,
+    resetBacklog,
     invalidateAll,
   };
 }

@@ -36,6 +36,7 @@ import { SectionPanel } from "../data/SectionPanel";
 import { useMilestones } from "../milestones/useMilestones";
 import { TaskDialog } from "./TaskDialog";
 import { TaskTreeView } from "./TaskTreeView";
+import { isContainer } from "./task-kind";
 import { useBoard } from "./useBoard";
 
 /** Droppable id for the unlinked pane — every other target is a task id. */
@@ -47,12 +48,11 @@ const UNLINKED_DROPPABLE = "epics-unlinked";
  * Deliberately looser than the rollup's definition of a container (see
  * tasks.leaf_only, which is purely "has children"): an epic you just created
  * has no children yet, and it would be absurd for it to appear under
- * "Unlinked tasks" until you fill it. The issue type is a statement of intent,
- * so it counts here. Nothing about points depends on this — it only decides
- * which pane a row is drawn in.
+ * "Unlinked tasks" until you fill it. Shared with the board, which keeps the
+ * same rows out of its backlog — see task-kind.
  */
 function isEpic(node: TaskNode): boolean {
-  return node.children.length > 0 || node.issue_type?.toLowerCase() === "epic";
+  return isContainer(node, node.children.length);
 }
 
 /**

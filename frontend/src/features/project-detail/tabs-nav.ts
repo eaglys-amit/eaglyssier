@@ -8,6 +8,7 @@ import {
   Gauge,
   Package,
   ScrollText,
+  Spade,
   SquareTerminal,
   Star,
   type LucideIcon,
@@ -39,9 +40,9 @@ export const PROJECT_TABS = [
   // The write surface over the same sprints/tasks Data reads, so it sits next to it.
   {
     key: "scrums",
-    label: "Scrums",
+    label: "Scrums & Epics",
     icon: ClipboardList,
-    blurb: "Plan the sprint: board, planning poker, AI breakdown, and charts.",
+    blurb: "Plan the sprint: the backlog board, epic structure, and charts.",
   },
   // The layer above the sprint horizon, rolled up from the same tasks.
   {
@@ -99,10 +100,40 @@ export const PROJECT_TABS = [
   blurb: string;
 }>;
 
-export type TabKey = (typeof PROJECT_TABS)[number]["key"];
+/**
+ * Pages that reuse the tab frame but are NOT in the strip — each is entered from
+ * another tab's title bar rather than from the strip itself.
+ *
+ * Sprint Planning is one workflow you enter from Scrums & Epics, not a twelfth
+ * peer of "Terminal": the strip already scrolls at eleven, and estimating is
+ * something you go and do, not a view you glance at.
+ */
+export const OFF_STRIP_TABS = [
+  {
+    key: "sprint-planning",
+    label: "Sprint Planning",
+    icon: Spade,
+    blurb:
+      "Break work down with AI, estimate it with planning poker, and export what the sprint agreed.",
+  },
+] as const satisfies ReadonlyArray<{
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  blurb: string;
+}>;
+
+/**
+ * Every page TabShell can frame. PROJECT_TABS is the strip; this is the strip
+ * plus the pages reached from a title bar, so routing and TabShell resolve a key
+ * the strip deliberately doesn't show.
+ */
+export const ALL_TABS = [...PROJECT_TABS, ...OFF_STRIP_TABS];
+
+export type TabKey = (typeof ALL_TABS)[number]["key"];
 
 export const DEFAULT_TAB: TabKey = "data";
 
 export function isTabKey(value: string | undefined): value is TabKey {
-  return PROJECT_TABS.some((t) => t.key === value);
+  return ALL_TABS.some((t) => t.key === value);
 }

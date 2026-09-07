@@ -16,6 +16,7 @@ import { KpiTab } from "@/features/project-detail/tabs/KpiTab";
 import { MilestonesTab } from "@/features/project-detail/tabs/MilestonesTab";
 import { ReportsTab } from "@/features/project-detail/tabs/ReportsTab";
 import { ScrumsTab } from "@/features/project-detail/tabs/ScrumsTab";
+import { SprintPlanningTab } from "@/features/project-detail/tabs/SprintPlanningTab";
 import { TerminalTab } from "@/features/project-detail/tabs/TerminalTab";
 
 /**
@@ -83,6 +84,8 @@ export function ProjectDetailLayout() {
         {tab === "data" && <DataTab projectId={projectId} />}
         {tab === "documents" && <DocumentsTab projectId={projectId} />}
         {tab === "scrums" && <ScrumsTab projectId={projectId} />}
+        {/* Off the strip above — entered from the Scrums & Epics title bar. */}
+        {tab === "sprint-planning" && <SprintPlanningTab projectId={projectId} />}
         {tab === "milestones" && <MilestonesTab projectId={projectId} />}
         {tab === "gantt" && <GanttTab projectId={projectId} />}
         {tab === "reports" && <ReportsTab projectId={projectId} />}

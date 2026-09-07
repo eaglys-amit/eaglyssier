@@ -309,18 +309,30 @@ def delete_all_sprints(project_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/projects/{project_id}/backlog", status_code=204)
-def delete_backlog_tasks(project_id: int, db: Session = Depends(get_db)):
-    """Remove the project's *synced* backlog tasks; a Jira re-sync recreates them.
+def delete_backlog_tasks(
+    project_id: int,
+    include_local: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Clear the project's backlog. Synced tasks only unless `include_local`.
 
-    Locally-created tasks are never touched: this endpoint is a "clear what
-    Jira gave us" button, and without the source filter it would wipe the
-    entire hand-built and AI-generated backlog behind a 204.
+    The default is a "clear what Jira gave us" reset: the rows it removes come
+    back on the next sync, so it is safe to press. Locally-created tasks —
+    hand-made and AI-generated alike, along with any poker estimate on them —
+    are what no re-sync can rebuild, so wiping them has to be asked for
+    explicitly rather than ride along behind a 204.
+
+    Either way this is a delete, not a detach: a removed task that parented work
+    in a sprint leaves that child promoted to top level (tasks.parent_id is
+    ON DELETE SET NULL), matching what deleting a single task already does.
     """
-    db.query(Task).filter(
+    query = db.query(Task).filter(
         Task.project_id == project_id,
         Task.sprint_id.is_(None),
-        Task.source == "sync",
-    ).delete(synchronize_session=False)
+    )
+    if not include_local:
+        query = query.filter(Task.source == "sync")
+    query.delete(synchronize_session=False)
     db.commit()
 
 
