@@ -252,8 +252,8 @@ TEMPLATE: tuple[_TemplateFolder, ...] = (
                 diagrams="a `flowchart TD` of the pipeline: commit -> build -> test -> artifact -> deploy.",
             ),
             _TemplateDoc(
-                key="release_notes_v1",
-                title="Release_Notes_v1.0.0",
+                key="release_notes",
+                title="Release_Notes",
                 context_kinds=("commits", "prs", "tasks", "milestones"),
                 guidance=(
                     "What changed, for the people who have to consume it. Group into Added, "
