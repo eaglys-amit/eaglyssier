@@ -6,13 +6,16 @@
  * so it goes out as a blob.
  */
 
-/** Save `text` as a file, without a round trip. */
-export function downloadText(
-  filename: string,
-  text: string,
-  mime = "text/markdown;charset=utf-8",
-): void {
-  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+/**
+ * Hand `blob` to the user as `filename`.
+ *
+ * Shared with downloadText because the DOM dance is the fiddly part and both
+ * halves of it are browser workarounds — Firefox and Safari each need one.
+ * Used directly for a file the server built (the documentation-set .zip), which
+ * arrives as a blob because it has to go through api.blob to surface errors.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -22,6 +25,15 @@ export function downloadText(
   link.remove();
   // Not immediate: Safari reads the href after the click returns.
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Save `text` as a file, without a round trip. */
+export function downloadText(
+  filename: string,
+  text: string,
+  mime = "text/markdown;charset=utf-8",
+): void {
+  saveBlob(new Blob([text], { type: mime }), filename);
 }
 
 /**

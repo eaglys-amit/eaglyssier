@@ -933,6 +933,158 @@ export interface ReferenceUpload {
   rejected: RejectedFile[];
 }
 
+// --------------------------------------------------- repository documentation
+
+export type DocSource = "template" | "ai" | "manual";
+
+/**
+ * A folder in one repository's documentation set, flat — `parent_id: null` is a
+ * top-level folder. Same flat-out/nest-in-the-client shape as ReferenceFolder.
+ */
+export interface RepoDocFolder {
+  id: number;
+  repo_id: number;
+  parent_id: number | null;
+  name: string;
+  rank: number;
+  source: DocSource;
+  template_key: string | null;
+  created_at: string | null;
+}
+
+/**
+ * A document WITHOUT its markdown.
+ *
+ * The set listing carries these because it is polled every 2s while a queue
+ * drains — shipping eleven documents' bodies on every tick would be pure waste.
+ * RepoDocDetail carries the markdown for the one open document.
+ */
+export interface RepoDoc {
+  id: number;
+  repo_id: number;
+  /** null = filed at the root of the set. */
+  folder_id: number | null;
+  title: string;
+  rank: number;
+  source: DocSource;
+  template_key: string | null;
+  /** What this document must contain, and which diagrams belong in it. */
+  guidance: string | null;
+  context_kinds: string[];
+  instructions: string | null;
+  reference_file_ids: number[];
+  status: JobStatus;
+  error: string | null;
+  model: string | null;
+  summary: string | null;
+  char_count: number;
+  /** Optimistic-concurrency token; sent back as `base_rev` when saving. */
+  rev: number;
+  generated_at: string | null;
+  edited_at: string | null;
+  updated_at: string | null;
+  has_content: boolean;
+  /** Saved by a human since the last generation — a regenerate would lose it. */
+  hand_edited: boolean;
+  /** The stem used by the .md download and inside the .zip. */
+  slug: string;
+  download_url: string | null;
+  view_url: string | null;
+}
+
+/** One document with its markdown — the preview's and the editor's source. */
+export interface RepoDocDetail extends RepoDoc {
+  markdown: string;
+  reference_filenames: string[];
+}
+
+export interface RepoDocQueue {
+  total: number;
+  queued: number;
+  running: number;
+  failed: number;
+  ready: number;
+  missing: number;
+}
+
+export interface RepoDocSet {
+  repo_id: number;
+  repo_name: string;
+  seeded_at: string | null;
+  folders: RepoDocFolder[];
+  docs: RepoDoc[];
+  queue: RepoDocQueue;
+  suggest_status: JobStatus;
+}
+
+export interface RepoDocGenerateIn {
+  instructions?: string | null;
+  reference_file_ids?: number[];
+}
+
+export interface RepoDocGenerateAllIn extends RepoDocGenerateIn {
+  /** Skip documents that already have content — the scope users usually want. */
+  only_missing?: boolean;
+  /** Restrict to one folder's subtree; null/absent = the whole set. */
+  folder_id?: number | null;
+  skip_hand_edited?: boolean;
+}
+
+export interface RepoDocQueueOut {
+  queued: number;
+  doc_ids: number[];
+}
+
+export interface RepoDocCancelOut {
+  cancelled: number;
+}
+
+export interface RepoDocContentIn {
+  markdown: string;
+  base_rev: number;
+}
+
+/**
+ * A proposed folder or document. `existing` is the server saying this path is
+ * already in the set, so the review row seeds unchecked rather than quietly
+ * growing a duplicate.
+ */
+export interface RepoDocSuggestion {
+  kind: "folder" | "doc";
+  /** Stable key for the row and for the accept payload. */
+  ref: string;
+  path: string;
+  title: string | null;
+  name: string | null;
+  parent_ref: string | null;
+  parent_folder_id: number | null;
+  guidance: string | null;
+  context_kinds: string[];
+  rationale: string | null;
+  existing: boolean;
+}
+
+export interface RepoDocSuggestions {
+  repo_id: number;
+  status: JobStatus;
+  error: string | null;
+  model: string | null;
+  suggested_at: string | null;
+  items: RepoDocSuggestion[];
+}
+
+/** Per-repo rollup for the picker, so it needs no set query per repository. */
+export interface RepoDocSummary {
+  repo_id: number;
+  repo_name: string;
+  seeded: boolean;
+  total: number;
+  ready: number;
+  active: number;
+  failed: number;
+  missing: number;
+}
+
 // ------------------------------------------------------- AI task breakdown
 
 export type BreakdownLevel = "epic" | "task" | "subtask";

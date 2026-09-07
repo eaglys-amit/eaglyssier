@@ -3,6 +3,12 @@ import type { ReferenceFile, ReferenceFolder } from "@/types/api";
 /**
  * Pure helpers over the flat folder list the API returns.
  *
+ * The three purely *structural* helpers — folderPath, descendantIds and
+ * flattenForPicker — are generic over the row shape, so the repository-docs
+ * tree (tabs/repo-docs/doc-tree.ts) reuses them instead of keeping a second
+ * copy of the same maths. The counting helpers stay ReferenceFile-specific: a
+ * documentation set rolls up job statuses, not a file count.
+ *
  * Kept separate from the components, like breakdown-draft.ts: assembling a tree,
  * counting a subtree and guarding a move are all decisions worth reading on
  * their own, and none of them need React.
@@ -97,12 +103,12 @@ export function subtreeFiles(files: ReferenceFile[], folder: FolderNode): Refere
  * render, and the server rejects cycles but a stale client list can still hold
  * a half-applied move.
  */
-export function folderPath(
-  folders: ReferenceFolder[],
+export function folderPath<F extends { id: number; parent_id: number | null }>(
+  folders: F[],
   folderId: number | null,
-): ReferenceFolder[] {
+): F[] {
   const byId = new Map(folders.map((f) => [f.id, f]));
-  const path: ReferenceFolder[] = [];
+  const path: F[] = [];
   let current = folderId == null ? undefined : byId.get(folderId);
   while (current && path.length < 64) {
     path.unshift(current);
@@ -113,7 +119,7 @@ export function folderPath(
 
 /** `folderId` plus every folder beneath it — the set a move must not target. */
 export function descendantIds(
-  folders: ReferenceFolder[],
+  folders: Array<{ id: number; parent_id: number | null }>,
   folderId: number,
 ): Set<number> {
   const children = new Map<number, number[]>();
@@ -141,10 +147,10 @@ export function descendantIds(
  * picker can grey out the impossible options rather than offering them and
  * letting the user earn a 409.
  */
-export function flattenForPicker(
-  roots: FolderNode[],
+export function flattenForPicker<N extends { id: number; children: N[] }>(
+  roots: N[],
   depth = 0,
-): Array<{ folder: FolderNode; depth: number }> {
+): Array<{ folder: N; depth: number }> {
   return roots.flatMap((folder) => [
     { folder, depth },
     ...flattenForPicker(folder.children, depth + 1),

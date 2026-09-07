@@ -31,6 +31,12 @@ export default defineConfig({
       output: {
         manualChunks: {
           xterm: ["@xterm/xterm", "@xterm/addon-fit"],
+          // Mermaid is the heaviest dependency in the app — larger than xterm.
+          // It is imported dynamically (see components/shared/Mermaid.tsx) so it
+          // only loads for a reader who opens a document containing a diagram;
+          // naming it here keeps that payload in one cacheable chunk instead of
+          // smeared across the route chunks.
+          mermaid: ["mermaid"],
           vendor: ["react", "react-dom", "react-router-dom", "@tanstack/react-query"],
         },
       },

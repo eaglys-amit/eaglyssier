@@ -63,6 +63,13 @@ export function jobBadge(status: JobStatus, labels?: Partial<Record<JobStatus, s
       return <StatusBadge variant="success" label={label ?? "Ready"} />;
     case "failed":
       return <StatusBadge variant="failed" label={label ?? "Failed"} />;
+    case "queued":
+      // Repo documentation is the first producer of this status: generate-all
+      // queues every document and the server drains them one at a time, so
+      // "queued" is a state the user actually watches. Without this case it
+      // fell through to "Not run" — a flat lie about something in a queue.
+      // Running colour but no spinner: it is waiting, not working.
+      return <StatusBadge variant="running" label={label ?? "Queued"} />;
     default:
       return <StatusBadge variant="neutral" label={label ?? "Not run"} />;
   }

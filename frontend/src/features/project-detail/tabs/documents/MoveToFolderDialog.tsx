@@ -10,8 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-import { descendantIds, flattenForPicker, type FolderNode } from "./folder-tree";
-import type { ReferenceFolder } from "@/types/api";
+import { descendantIds, flattenForPicker } from "./folder-tree";
 
 /**
  * Pick a destination for a document or a folder.
@@ -23,8 +22,14 @@ import type { ReferenceFolder } from "@/types/api";
  * When moving a *folder*, its own subtree is disabled rather than hidden — the
  * server rejects those moves anyway, and greying them out explains why instead
  * of leaving the user hunting for a folder that silently vanished from the list.
+ *
+ * Generic over the node so it serves both trees (reference documents and a
+ * repository's documentation set); `rootLabel`/`rootIcon` exist because a
+ * documentation set's root is not called "All documents".
  */
-export function MoveToFolderDialog({
+export function MoveToFolderDialog<
+  N extends { id: number; name: string; children: N[] },
+>({
   open,
   onOpenChange,
   title,
@@ -33,16 +38,20 @@ export function MoveToFolderDialog({
   currentFolderId,
   /** Set when moving a folder, so its own subtree can be ruled out. */
   movingFolderId,
+  rootLabel = "All documents",
+  rootIcon = Library,
   busy,
   onMove,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  roots: FolderNode[];
-  allFolders: ReferenceFolder[];
+  roots: N[];
+  allFolders: Array<{ id: number; parent_id: number | null }>;
   currentFolderId: number | null;
   movingFolderId?: number;
+  rootLabel?: string;
+  rootIcon?: typeof Folder;
   busy: boolean;
   onMove: (folderId: number | null) => void;
 }) {
@@ -60,8 +69,8 @@ export function MoveToFolderDialog({
 
         <div className="-mx-2 max-h-72 overflow-y-auto px-2">
           <Option
-            icon={Library}
-            label="All documents"
+            icon={rootIcon}
+            label={rootLabel}
             depth={0}
             current={currentFolderId === null}
             disabled={busy || currentFolderId === null}

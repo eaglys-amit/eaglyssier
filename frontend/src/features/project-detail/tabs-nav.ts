@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookText,
   ClipboardList,
   Database,
   FileText,
@@ -107,6 +108,11 @@ export const PROJECT_TABS = [
  * Sprint Planning is one workflow you enter from Scrums & Epics, not a twelfth
  * peer of "Terminal": the strip already scrolls at eleven, and estimating is
  * something you go and do, not a view you glance at.
+ *
+ * Repository Docs is off the strip for a different reason: it is scoped to one
+ * repository rather than to the project, so a tab of its own would really have
+ * to be a tab per repository. It is entered per repo from the Repositories
+ * panel on the Data tab and carries the repo in `?repo=`.
  */
 export const OFF_STRIP_TABS = [
   {
@@ -115,6 +121,13 @@ export const OFF_STRIP_TABS = [
     icon: Spade,
     blurb:
       "Break work down with AI, estimate it with planning poker, and export what the sprint agreed.",
+  },
+  {
+    key: "repo-docs",
+    label: "Repository Docs",
+    icon: BookText,
+    blurb:
+      "AI-written documentation for one repository: a folder tree of documents you can generate, edit and export.",
   },
 ] as const satisfies ReadonlyArray<{
   key: string;

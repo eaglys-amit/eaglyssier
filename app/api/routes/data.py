@@ -33,6 +33,7 @@ from app.schemas.data import (
     TaskOut,
 )
 from app.schemas.jobs import AnalyzeAllOut
+from app.services import repo_docs as repo_docs_svc
 from app.services import tasks as tasks_svc
 from app.services.commit_link import (
     attach_commit,
@@ -377,6 +378,10 @@ def delete_repo(repo_id: int, db: Session = Depends(get_db)):
     """Manually remove a synced repo and its commits/PRs (cascade)."""
     repo = db.get(GitRepo, repo_id)
     if repo:
+        # The documentation set's rows CASCADE away with the repo, and rustfs
+        # has no list-objects — so without this every generated document's
+        # bytes become unreachable forever. Best-effort, before the delete.
+        repo_docs_svc.purge_repo_docs(db, repo_id)
         db.delete(repo)
         db.commit()
 

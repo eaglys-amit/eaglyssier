@@ -3,7 +3,7 @@
 Only "claude_cli" is implemented this iteration. The API-based providers are
 listed so the UI can offer (and disable) them, but constructing one raises until
 its module lands. Future providers take the project's decrypted `credentials`
-and a `config` dict (e.g. model name).
+and a `config` dict (e.g. model name, per-call timeout).
 """
 from __future__ import annotations
 
@@ -33,7 +33,8 @@ def get_analyzer(
     config: dict | None = None,
 ) -> Analyzer:
     if provider == "claude_cli":
-        return ClaudeCliAnalyzer(model=(config or {}).get("model"))
+        cfg = config or {}
+        return ClaudeCliAnalyzer(model=cfg.get("model"), timeout=cfg.get("timeout"))
     if provider in PROVIDERS:
         raise NotImplementedError(
             f"Analysis provider '{PROVIDERS[provider]}' is not yet available."

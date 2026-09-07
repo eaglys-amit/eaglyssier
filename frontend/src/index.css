@@ -119,3 +119,102 @@
     @apply bg-background text-foreground text-sm;
   }
 }
+
+/* Generated markdown (see components/shared/Markdown.tsx).
+ *
+ * Hand-rolled rather than @tailwindcss/typography: `prose` ships its own grey
+ * scale and its own max-width, so it would sit next to this app's tokens rather
+ * than inside them, and dark mode would mean wiring `dark:prose-invert` to
+ * next-themes by hand. Every rule below uses a token that already inverts under
+ * `.dark`, so light/dark comes for free and can't drift from the rest of the UI.
+ *
+ * Element selectors rather than a `components` map in the renderer:
+ * react-markdown would need one entry per tag, and the point is that this reads
+ * as one typographic scale in one place.
+ *
+ * `components` and not `base`, so a caller's own utility class still wins. */
+@layer components {
+  .markdown {
+    @apply text-foreground text-sm leading-relaxed;
+  }
+  .markdown > :first-child {
+    @apply mt-0;
+  }
+  .markdown h1 {
+    @apply mt-8 mb-3 text-xl font-semibold tracking-tight;
+  }
+  .markdown h2 {
+    @apply mt-7 mb-2.5 border-b pb-1.5 text-lg font-semibold tracking-tight;
+  }
+  .markdown h3 {
+    @apply mt-6 mb-2 text-base font-semibold tracking-tight;
+  }
+  .markdown h4 {
+    @apply mt-5 mb-1.5 text-sm font-semibold;
+  }
+  .markdown p {
+    @apply my-3;
+  }
+  .markdown a {
+    @apply text-primary underline underline-offset-4 hover:no-underline;
+  }
+  .markdown strong {
+    @apply font-semibold;
+  }
+  .markdown ul {
+    @apply my-3 list-disc space-y-1 pl-5;
+  }
+  .markdown ol {
+    @apply my-3 list-decimal space-y-1 pl-5;
+  }
+  .markdown li > ul,
+  .markdown li > ol {
+    @apply my-1;
+  }
+  .markdown blockquote {
+    @apply text-muted-foreground my-3 border-l-2 pl-3 italic;
+  }
+  /* Inline code only — the fence rule below resets it, because a <pre><code>
+     carrying the inline padding renders as a double-boxed block. */
+  .markdown code {
+    @apply bg-muted text-foreground rounded px-1 py-0.5 font-mono text-[0.8125rem];
+  }
+  .markdown pre {
+    @apply bg-muted/50 my-3 overflow-x-auto rounded-md border p-3 font-mono text-xs leading-relaxed;
+  }
+  .markdown pre code {
+    @apply bg-transparent p-0 text-xs;
+  }
+  .markdown hr {
+    @apply my-6;
+  }
+  .markdown table {
+    @apply my-3 w-full border-collapse text-xs;
+  }
+  .markdown th {
+    @apply bg-muted border-b px-2.5 py-1.5 text-left font-semibold whitespace-nowrap;
+  }
+  .markdown td {
+    @apply border-b px-2.5 py-1.5 align-top;
+  }
+  /* GFM task lists: a bullet next to a checkbox is noise. */
+  .markdown li:has(> input[type="checkbox"]) {
+    @apply -ml-5 list-none;
+  }
+  .markdown input[type="checkbox"] {
+    @apply mr-1.5 align-middle;
+  }
+  .markdown img {
+    @apply my-3 max-w-full rounded-md border;
+  }
+
+  /* Mermaid replaces the <pre> entirely, so it must not inherit the code-block
+     background or the mono font above. */
+  .markdown .mermaid-figure {
+    @apply bg-card my-4 flex justify-center overflow-x-auto rounded-md border p-3;
+  }
+  .markdown .mermaid-figure svg {
+    max-width: 100%;
+    height: auto;
+  }
+}

@@ -437,6 +437,27 @@ class GitRepo(Base, TimestampMixin):
     summary_model: Mapped[str | None] = mapped_column(String(128))
     summarized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # AI documentation set (see app.services.repo_docs / repo_doc_gen).
+    #
+    # NULL means the built-in template has never been seeded. An explicit marker
+    # rather than inferring it from "no rows carry a template_key", because that
+    # inference would resurrect a template document the user deliberately
+    # deleted on the next visit to the page.
+    docs_seeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # The model's proposal for extra folders/documents fitting this repo, staged
+    # for review. Columns on the repo rather than a table of their own for the
+    # reason the summary_* quintet above is shaped this way: only one proposal is
+    # ever meaningful at a time, and its history has no value once accepted or
+    # dismissed. A table would buy a list endpoint nobody wants.
+    doc_suggest_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    doc_suggestions: Mapped[dict | None] = mapped_column(JSON)
+    doc_suggest_error: Mapped[str | None] = mapped_column(Text)
+    doc_suggest_model: Mapped[str | None] = mapped_column(String(128))
+    doc_suggested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     project: Mapped["Project"] = relationship(back_populates="repos")
     commits: Mapped[list["Commit"]] = relationship(
         back_populates="repo", cascade="all, delete-orphan"
@@ -812,6 +833,153 @@ class ReferenceFile(Base, TimestampMixin):
     project: Mapped["Project"] = relationship()
     task: Mapped["Task"] = relationship()
     folder: Mapped["ReferenceFolder"] = relationship()
+
+
+class RepoDocFolder(Base, TimestampMixin):
+    """A folder in one repository's AI documentation set.
+
+    The same adjacency list as :class:`ReferenceFolder`, and CASCADEs on
+    ``parent_id`` for the same reason: deleting a folder takes its subfolders,
+    because an empty shell of child folders is worse than nothing.
+
+    ``template_key`` — not ``name`` — is what makes seeding idempotent. Renaming
+    ``01_Requirements_&_Design`` must not cause the next seed to create a second
+    copy of it, so the stable slug is the identity and the name is free text.
+
+    Sibling names are kept unique case-insensitively by
+    app.services.repo_docs, not by a UniqueConstraint, for the reason spelled
+    out on ReferenceFolder: Postgres treats NULLs as distinct and every
+    top-level folder has ``parent_id IS NULL``, so the constraint would silently
+    not apply exactly where duplicates are most likely.
+    """
+
+    __tablename__ = "repo_doc_folders"
+    __table_args__ = (
+        # NULL template_keys stay distinct in Postgres, so any number of manual
+        # and AI-suggested folders coexist under this constraint.
+        UniqueConstraint("repo_id", "template_key", name="uq_repo_doc_folder_template"),
+        Index("ix_repo_doc_folder_repo_id", "repo_id"),
+        Index("ix_repo_doc_folder_parent_id", "parent_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("git_repos.id", ondelete="CASCADE"))
+    # NULL = a top-level folder, directly under the set root.
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("repo_doc_folders.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # The template's 01_..04_ prefixes only order the built-in folders; AI and
+    # manual ones carry no prefix and would interleave arbitrarily by name.
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="manual", server_default="manual"
+    )  # template | ai | manual
+    template_key: Mapped[str | None] = mapped_column(String(64))
+
+    repo: Mapped["GitRepo"] = relationship()
+
+
+class RepoDoc(Base, TimestampMixin):
+    """One markdown document in a repository's documentation set.
+
+    The bytes live in RustFS under
+    ``repo-docs/{repo_id}/{doc_id}/{safe_filename(title)}.md``, mirroring how
+    reference documents and report artifacts are keyed. The key is computed at
+    the first write and then never rewritten — not even on rename.
+    ``storage_key`` is the truth and the path is only a debugging hint; renaming
+    the object would mean a put + delete pair with a window in which a crash
+    loses the only copy, to make a path prettier that nothing reads.
+
+    ``folder_id`` is SET NULL where :attr:`RepoDocFolder.parent_id` CASCADEs,
+    the same split ReferenceFile draws and for the same reason: filing is
+    organizational, the blob is the only copy, and losing a generated document
+    because someone tidied up folders would be unrecoverable. Documents survive
+    at the set root.
+
+    ``storage_key`` is nullable here where ReferenceFile's is not: the template
+    seeds eleven documents *before* any of them has been generated, so a row
+    legitimately exists with nothing behind it.
+    """
+
+    __tablename__ = "repo_docs"
+    __table_args__ = (
+        UniqueConstraint("repo_id", "template_key", name="uq_repo_doc_template"),
+        Index("ix_repo_doc_repo_id", "repo_id"),
+        Index("ix_repo_doc_folder_id", "folder_id"),
+        # The drain worker's queue probe and the UI's queue counters both filter
+        # on exactly this pair.
+        Index("ix_repo_doc_repo_status", "repo_id", "status"),
+        Index("ix_repo_doc_repo_rank", "repo_id", "rank"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    repo_id: Mapped[int] = mapped_column(ForeignKey("git_repos.id", ondelete="CASCADE"))
+    # NULL = filed at the root of the set.
+    folder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("repo_doc_folders.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    # Repo-scoped, not folder-scoped: the drain worker orders the queue by
+    # (rank, id) with no join to folders, and moving a document between folders
+    # then needs no re-rank.
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="manual", server_default="manual"
+    )  # template | ai | manual
+    template_key: Mapped[str | None] = mapped_column(String(64))
+
+    # What this document must contain, and which diagrams belong in it. Seeded
+    # from the built-in template, supplied by the model for AI-suggested
+    # documents, editable by hand. This column is what lets ONE prompt serve
+    # every document type: everything that differs between a PRD and a CI/CD
+    # runbook is "what sections, what evidence, what diagrams" — data, not
+    # control flow. A suggested document has no Python constant and never will,
+    # so a parameterized prompt is required regardless; keeping a second copy of
+    # the brief in code would only be a consistency bug waiting to happen.
+    guidance: Mapped[str | None] = mapped_column(Text)
+    # Which evidence blocks app.services.repo_doc_gen.build_context assembles:
+    # a subset of summary/commits/files/prs/sprints/tasks/milestones. Empty list
+    # = everything. Keeps a Competitor_Analysis from being buried in sprint
+    # noise, and gives a suggested document a place to declare its own needs.
+    context_kinds: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    # The last free-text ask, persisted so a regenerate repeats the same
+    # instruction and the UI can show what was requested (as TaskBreakdown does).
+    instructions: Mapped[str | None] = mapped_column(Text)
+    # Plain id list, not a FK table — same reasoning as
+    # TaskBreakdown.reference_file_ids: deleting a project reference document
+    # later must not invalidate the provenance of a document already generated.
+    reference_file_ids: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+
+    # NULL = never generated and never saved.
+    storage_key: Mapped[str | None] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Lets the tree say "not generated yet" without a storage round trip.
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    summary: Mapped[str | None] = mapped_column(Text)
+
+    # Bumped on every content write, generated or manual. The editor sends the
+    # rev it seeded from as `base_rev`, so a save that races a generation 409s
+    # instead of silently overwriting it.
+    rev: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | queued | running | ready | failed
+    error: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(128))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Last *manual* save. NULL = never hand-edited. The API derives
+    # `hand_edited` from this and generated_at rather than storing it, so the UI
+    # can warn before a regenerate throws someone's edits away.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    repo: Mapped["GitRepo"] = relationship()
+    folder: Mapped["RepoDocFolder | None"] = relationship()
 
 
 class TaskBreakdown(Base, TimestampMixin):

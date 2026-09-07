@@ -11,6 +11,24 @@ export const qk = {
   pulls: (repoId: number) => ["repos", repoId, "pulls"] as const,
   repoSummary: (repoId: number) => ["repos", repoId, "summary"] as const,
   repoSync: (repoId: number) => ["repos", repoId, "sync"] as const,
+  // Repository documentation. Repo-scoped, so it sits with the other
+  // ["repos", id] keys — and deliberately OUTSIDE the project subtree for the
+  // same reason as breakdown and pokerSession below: the set is polled every 2s
+  // while a generate-all queue drains, and a project-wide invalidation (member
+  // sync and the epic generator both sweep the project prefix) must not land in
+  // the middle of it.
+  repoDocSet: (repoId: number) => ["repos", repoId, "docs"] as const,
+  // Nested under repoDocSet, so invalidating the set after accepting a proposal
+  // refreshes both with one call.
+  repoDocSuggestions: (repoId: number) => ["repos", repoId, "docs", "suggest"] as const,
+  // Its own root, not under repoDocSet: this one carries the markdown and is
+  // read by the editor, so a whole-set invalidation must not sweep it and pull
+  // the document out from under an unsaved draft. It is also polled by document
+  // id while that one document generates.
+  repoDoc: (docId: number) => ["repo-docs", docId] as const,
+  // The picker's rollup, by contrast, IS project-scoped and never polled —
+  // being swept by a project invalidation is exactly what it wants.
+  repoDocsOverview: (id: number) => ["projects", id, "repo-docs"] as const,
   commitAnalysis: (commitId: number) => ["commits", commitId, "analysis"] as const,
   commitDetail: (commitId: number) => ["commits", commitId, "detail"] as const,
   reports: (id: number) => ["projects", id, "reports"] as const,

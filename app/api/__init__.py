@@ -21,6 +21,7 @@ from app.api.routes import (
     projects,
     provider,
     references,
+    repo_docs,
     reports,
     scope,
     settings,
@@ -56,5 +57,8 @@ for _r in (
     poker.router,
     references.router,
     breakdown.router,
+    # Per-repo documentation sets: written from the repo summary and commit
+    # analyses above, plus whichever reference documents the user picks.
+    repo_docs.router,
 ):
     api_router.include_router(_r)

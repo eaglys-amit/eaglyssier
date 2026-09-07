@@ -8,7 +8,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  parse?: (res: Response) => Promise<T>,
+): Promise<T> {
   // FormData has to set its own multipart boundary, so the JSON content-type is
   // only defaulted for JSON payloads — forcing it would corrupt the body.
   //
@@ -35,7 +39,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, detail);
   }
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  return parse ? parse(res) : (res.json() as Promise<T>);
 }
 
 export const api = {
@@ -61,4 +65,13 @@ export const api = {
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   delete: <T = void>(path: string) => request<T>(path, { method: "DELETE" }),
+  /**
+   * A file the server builds on the fly — today the documentation-set .zip.
+   *
+   * Through `request` rather than an <a href download> so a failure surfaces as
+   * an ApiError with the server's detail and a toast, instead of navigating the
+   * user to a page of raw JSON. Anything the server has already stored (see
+   * ReferenceFile.download_url) stays a plain anchor: it can't fail this way.
+   */
+  blob: (path: string) => request<Blob>(path, {}, (res) => res.blob()),
 };

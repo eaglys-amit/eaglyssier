@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     reference_max_chars: int = 200_000  # cap on extracted text kept in the DB
     breakdown_max_prompt_chars: int = 60_000  # per-prompt document budget
 
+    # Per-repo AI documentation sets (see app.services.repo_doc_gen). A document
+    # is a far longer generation than a commit analysis, so it carries its own
+    # timeout rather than borrowing claude_timeout_seconds above.
+    repo_doc_max_prompt_chars: int = 60_000  # evidence budget per document
+    repo_doc_target_words: int = 1_200
+    repo_doc_max_chars: int = 200_000  # cap on one document's markdown
+    repo_doc_timeout_seconds: int = 300
+
     @property
     def fernet_key(self) -> bytes:
         """Derive a stable urlsafe-base64 32-byte Fernet key from SECRET_KEY."""

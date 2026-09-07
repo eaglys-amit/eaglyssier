@@ -124,10 +124,15 @@ def _strip_code_fences(text: str) -> str:
 class ClaudeCliAnalyzer(Analyzer):
     provider = "claude_cli"
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, timeout: int | None = None):
         # Per-call model override (e.g. "opus"/"sonnet"/"haiku"); falls back to
         # the CLAUDE_MODEL env default, then the CLI's own default.
         self.model = model or settings.claude_model
+        # Per-call timeout, because generation lengths differ by an order of
+        # magnitude: a commit analysis is a paragraph, a repository document is
+        # ~1200 words and routinely outruns claude_timeout_seconds. Callers that
+        # pass nothing keep the global default exactly as before.
+        self.timeout = timeout or settings.claude_timeout_seconds
 
     def analyze(self, prompt: str) -> AnalyzerResult:
         cmd = [settings.claude_bin, "-p", "--output-format", "json"]
@@ -153,11 +158,11 @@ class ClaudeCliAnalyzer(Analyzer):
                     text=True,
                     cwd=workdir,
                     env=env,
-                    timeout=settings.claude_timeout_seconds,
+                    timeout=self.timeout,
                 )
             except subprocess.TimeoutExpired as exc:
                 raise AnalyzerError(
-                    f"Claude CLI timed out after {settings.claude_timeout_seconds}s"
+                    f"Claude CLI timed out after {self.timeout}s"
                 ) from exc
             except FileNotFoundError as exc:
                 raise AnalyzerError(

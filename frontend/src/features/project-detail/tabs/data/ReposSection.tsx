@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BookText,
   ChevronDown,
   ExternalLink,
   FolderGit2,
@@ -8,6 +9,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -80,7 +82,7 @@ function Diff({ additions, deletions }: { additions: number; deletions: number }
 
 /* ------------------------------------------------------------- repo summary */
 
-function RepoSummaryPanel({ repo }: { repo: Repo }) {
+function RepoSummaryPanel({ projectId, repo }: { projectId: number; repo: Repo }) {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: qk.repoSummary(repo.id),
@@ -165,6 +167,18 @@ function RepoSummaryPanel({ repo }: { repo: Repo }) {
           Generate an LLM overview of this repository's activity and contributors.
         </p>
       ) : null}
+
+      {/* A second way in to the documentation set. The row's "Docs" button is
+          easy to miss among nine other controls, and this is where someone
+          reading about the repo would want to go next. */}
+      <div className="border-t pt-2">
+        <Link
+          to={`/projects/${projectId}/repo-docs?repo=${repo.id}`}
+          className="text-primary text-xs underline-offset-4 hover:underline"
+        >
+          Write the full documentation set →
+        </Link>
+      </div>
     </div>
   );
 }
@@ -605,6 +619,19 @@ function RepoCard({
             </a>
           </Button>
         ) : null}
+        {/* Sits with the repository's own actions rather than inside the
+            collapsible: the documentation set is a property of the repo, not of
+            whichever panel happens to be showing. Labelled "Docs" because this
+            row already carries a checkbox, a chevron, an icon, a name, badges, a
+            counter, an external link, a labelled Sync and a trash icon — the
+            sr-only text supplies the repo name, as Sync's does below. */}
+        <Button asChild variant="ghost" size="sm" className="h-7 px-2">
+          <Link to={`/projects/${projectId}/repo-docs?repo=${repo.id}`}>
+            <BookText className="size-3.5" />
+            Docs
+            <span className="sr-only">for {repo.name}</span>
+          </Link>
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -640,7 +667,9 @@ function RepoCard({
       <CollapsibleContent>
         {/* Which panel shows is driven by the section-level toggle (all repos share it). */}
         <div className="border-t">
-          {view === "summary" ? <RepoSummaryPanel repo={repo} /> : null}
+          {view === "summary" ? (
+            <RepoSummaryPanel projectId={projectId} repo={repo} />
+          ) : null}
           {view === "pulls" ? <PrTable repoId={repo.id} memberId={activeMemberId} /> : null}
           {view === "commits" ? <CommitList repoId={repo.id} memberId={activeMemberId} /> : null}
         </div>

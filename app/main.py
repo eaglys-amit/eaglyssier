@@ -15,7 +15,15 @@ from app import scheduler
 from app.api import api_router
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Commit, EvaluationSheet, SyncRun, SyncStatus, TaskBreakdown
+from app.models import (
+    Commit,
+    EvaluationSheet,
+    GitRepo,
+    RepoDoc,
+    SyncRun,
+    SyncStatus,
+    TaskBreakdown,
+)
 from app.storage import rustfs
 from app.web.routes import provider_ws, report_artifacts, terminal
 
@@ -120,6 +128,46 @@ def _reconcile_orphaned_syncs() -> None:
             )
     except Exception:  # noqa: BLE001
         logging.getLogger("startup").warning("Could not reconcile orphaned breakdowns.")
+    finally:
+        db.close()
+
+    # Repository documents generate as in-process BackgroundTasks drained by a
+    # per-repo worker, so a restart (the dev reloader included) drops the whole
+    # queue: running rows would poll forever and queued rows would sit at
+    # "Queued" with nothing left to drain them.
+    db = SessionLocal()
+    try:
+        running = db.execute(
+            update(RepoDoc)
+            .where(RepoDoc.status == "running")
+            .values(status="failed", error="Interrupted by server restart.")
+        )
+        # Back to idle rather than failed: nothing was attempted, so they should
+        # read as re-runnable. Same rule as queued commit attribution above.
+        queued = db.execute(
+            update(RepoDoc)
+            .where(RepoDoc.status == "queued")
+            .values(status="none")
+        )
+        suggestions = db.execute(
+            update(GitRepo)
+            .where(GitRepo.doc_suggest_status == "running")
+            .values(
+                doc_suggest_status="failed",
+                doc_suggest_error="Interrupted by server restart.",
+            )
+        )
+        db.commit()
+        if running.rowcount or queued.rowcount or suggestions.rowcount:
+            logging.getLogger("startup").info(
+                "Reset %d running and %d queued repo document(s), "
+                "and %d document suggestion job(s).",
+                running.rowcount,
+                queued.rowcount,
+                suggestions.rowcount,
+            )
+    except Exception:  # noqa: BLE001
+        logging.getLogger("startup").warning("Could not reconcile orphaned repo documents.")
     finally:
         db.close()
 
