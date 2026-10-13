@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { RotateCcw, SlidersHorizontal } from "lucide-react";
 
 import { PlatformIcon } from "@/components/shared/PlatformIcon";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,6 +54,9 @@ export function ScopeSummary({ projectId, memberId, onEdit }: {
 /**
  * The sprints, repositories and dates this member's KPI and evaluation are
  * generated from. Saved on every change. Nothing ticked means everything.
+ *
+ * Laid out like the Data tab: a fixed strip for the dates, then the two lists
+ * as panels that fill the rest of the height and scroll inside.
  */
 export function ScopeEditor({ projectId, memberId }: { projectId: number; memberId: number }) {
   const editable = useAccess(projectId).can("people_manage");
@@ -66,48 +69,52 @@ export function ScopeEditor({ projectId, memberId }: { projectId: number; member
     queryKey: qk.repos(projectId),
     queryFn: () => api.get<Repo[]>(`/projects/${projectId}/repos`),
   });
+  // Stacked below lg, where the page scrolls: cap each list instead.
+  const panel = "max-lg:h-auto max-lg:max-h-96";
+  const ticked = (n: number) => (
+    <span className="text-xs text-muted-foreground">
+      {n ? `${n} ticked` : "None ticked — all are used"}
+    </span>
+  );
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between gap-2 text-sm">
-          Data scope
-          {editable ? (
-            <Button variant="ghost" size="sm" onClick={reset}>
-              <RotateCcw className="size-3.5" /> Reset to everything
-            </Button>
-          ) : null}
-        </CardTitle>
-        <CardDescription>
-          {describeScope(scope)}. Leave a list unticked to use all of it.
-          {editable ? " Saved automatically." : " Only a tech lead or project manager can change it."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="scope-start" className="text-xs text-muted-foreground">From</Label>
-            <Input id="scope-start" type="date" className="h-8 w-40" disabled={!editable}
-                   value={scope.start_date ?? ""}
-                   onChange={(e) => update({ start_date: e.target.value || null })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="scope-end" className="text-xs text-muted-foreground">To</Label>
-            <Input id="scope-end" type="date" className="h-8 w-40" disabled={!editable}
-                   value={scope.end_date ?? ""}
-                   onChange={(e) => update({ end_date: e.target.value || null })} />
+    <div className="flex flex-col gap-4 lg:h-full">
+      <div className="flex shrink-0 flex-wrap items-end gap-4 rounded-lg border bg-card px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">Data scope</div>
+          <div className="text-xs text-muted-foreground">
+            {describeScope(scope)}.{" "}
+            {editable ? "Saved automatically." : "Only a tech lead or project manager can change it."}
           </div>
         </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="scope-start" className="text-xs text-muted-foreground">From</Label>
+          <Input id="scope-start" type="date" className="h-8 w-40" disabled={!editable}
+                 value={scope.start_date ?? ""}
+                 onChange={(e) => update({ start_date: e.target.value || null })} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="scope-end" className="text-xs text-muted-foreground">To</Label>
+          <Input id="scope-end" type="date" className="h-8 w-40" disabled={!editable}
+                 value={scope.end_date ?? ""}
+                 onChange={(e) => update({ end_date: e.target.value || null })} />
+        </div>
+        {editable ? (
+          <Button variant="ghost" size="sm" onClick={reset}>
+            <RotateCcw className="size-3.5" /> Reset to everything
+          </Button>
+        ) : null}
+      </div>
 
-        <div className="grid gap-5 lg:grid-cols-2">
-          <fieldset className="space-y-1.5">
-            <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Sprints ({scope.sprint_ids.length || "all"})
-            </legend>
-            {sprints.length ? (
-              <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
-                {sprints.map((s) => (
-                  <label key={s.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-accent/40">
+      <div className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
+        <SectionPanel title="Sprints" count={sprints.length || undefined}
+                      subtitle={ticked(scope.sprint_ids.length)} flush={sprints.length > 0}
+                      className={panel}>
+          {sprints.length ? (
+            <ul className="divide-y">
+              {sprints.map((s) => (
+                <li key={s.id}>
+                  <label className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/40">
                     <Checkbox checked={scope.sprint_ids.includes(s.id)} disabled={!editable}
                               onCheckedChange={() => toggleSprint(s.id)} />
                     <span className="min-w-0 flex-1 truncate">{s.name}</span>
@@ -115,33 +122,34 @@ export function ScopeEditor({ projectId, memberId }: { projectId: number; member
                       {formatDate(s.start_date)} → {formatDate(s.end_date)}
                     </span>
                   </label>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No sprints synced.</p>
-            )}
-          </fieldset>
-          <fieldset className="space-y-1.5">
-            <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Repositories ({scope.repo_ids.length || "all"})
-            </legend>
-            {repos.length ? (
-              <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
-                {repos.map((r) => (
-                  <label key={r.id} className="flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-accent/40">
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No sprints synced.</p>
+          )}
+        </SectionPanel>
+        <SectionPanel title="Repositories" count={repos.length || undefined}
+                      subtitle={ticked(scope.repo_ids.length)} flush={repos.length > 0}
+                      className={panel}>
+          {repos.length ? (
+            <ul className="divide-y">
+              {repos.map((r) => (
+                <li key={r.id}>
+                  <label className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/40">
                     <Checkbox checked={scope.repo_ids.includes(r.id)} disabled={!editable}
                               onCheckedChange={() => toggleRepo(r.id)} />
                     <PlatformIcon platform={r.provider} size={14} />
                     <span className="min-w-0 flex-1 truncate">{r.name}</span>
                   </label>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No repositories synced.</p>
-            )}
-          </fieldset>
-        </div>
-      </CardContent>
-    </Card>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No repositories synced.</p>
+          )}
+        </SectionPanel>
+      </div>
+    </div>
   );
 }
