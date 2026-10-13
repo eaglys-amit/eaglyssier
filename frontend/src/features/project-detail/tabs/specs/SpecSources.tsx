@@ -1,9 +1,15 @@
-import { GitBranch, RefreshCw } from "lucide-react";
+import { AlertTriangle, GitBranch, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
-import { SectionPanel } from "@/components/shared/SectionPanel";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { formatDateTime } from "@/lib/format";
@@ -72,32 +78,77 @@ function SourceRow({ projectId, source }: { projectId: number; source: SpecSourc
 
 /**
  * Repositories as spec sources (spec-kit layout: <folder>/<feature>/spec.md,
- * plan.md, tasks.md). Turning one on reads it now and on every repo sync after.
+ * plan.md, tasks.md). Setup, not something to act on daily — so it lives in a
+ * dialog opened from the Specs title bar, next to "Track a spec": the two ways
+ * specs come in. Turning one on reads it now and on every repo sync after.
  */
-export function SpecSources({ projectId }: { projectId: number }) {
+export function SpecSourcesDialog({ projectId, open, onOpenChange }: {
+  projectId: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const { data: sources } = useSpecSources(projectId);
-  if (!sources?.length) return null;
   return (
-    // Capped so a long repository list scrolls inside the panel instead of
-    // pushing the specs below it off the screen.
-    <SectionPanel
-      title="Specs in repositories"
-      count={sources.length}
-      flush
-      className="h-auto max-h-80"
-      subtitle={
-        <span className="text-xs text-muted-foreground">
-          Reads spec-kit feature folders (<span className="font-mono">specs/001-feature/spec.md</span>,
-          plus <span className="font-mono">plan.md</span> and <span className="font-mono">tasks.md</span>)
-          from the default branch. Lines in tasks.md are matched to existing tasks; none are created.
-        </span>
-      }
-    >
-      <ul className="divide-y">
-        {sources.map((s) => (
-          <SourceRow key={s.repo_id} projectId={projectId} source={s} />
-        ))}
-      </ul>
-    </SectionPanel>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Spec sources: repositories</DialogTitle>
+          <DialogDescription>
+            Reads spec-kit feature folders (<span className="font-mono">specs/001-feature/spec.md</span>,
+            plus <span className="font-mono">plan.md</span> and <span className="font-mono">tasks.md</span>)
+            from each repository's default branch. Lines in tasks.md are matched to existing tasks;
+            none are created. To track an uploaded document instead, use "Track a spec".
+          </DialogDescription>
+        </DialogHeader>
+        {sources?.length ? (
+          <ul className="max-h-[60vh] divide-y overflow-y-auto rounded-md border">
+            {sources.map((s) => (
+              <SourceRow key={s.repo_id} projectId={projectId} source={s} />
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No repositories synced yet — connect GitHub or GitLab on the Integrations page and sync
+            a repository from the Data tab.
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
   );
+}
+
+/** Repositories with spec sync on whose last sync failed. */
+function failing(sources: SpecSource[] | undefined): SpecSource[] {
+  return (sources ?? []).filter((s) => s.spec_sync_enabled && s.spec_sync_status === "failed");
+}
+
+/** Failed spec syncs, as one line each — shown on the Overview so they aren't missed. */
+export function SpecSyncWarnings({ projectId, onOpenSources }: {
+  projectId: number;
+  onOpenSources: () => void;
+}) {
+  const { data: sources } = useSpecSources(projectId);
+  const failed = failing(sources);
+  if (!failed.length) return null;
+  return (
+    <div className="space-y-1.5">
+      {failed.map((s) => (
+        <div key={s.repo_id}
+             className="flex flex-wrap items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+          <AlertTriangle className="size-4 shrink-0 text-destructive" />
+          <span className="min-w-0 flex-1">
+            Spec sync failed for <span className="font-medium">{s.name}</span>
+            {s.spec_sync_error ? <span className="text-muted-foreground"> — {s.spec_sync_error}</span> : null}
+          </span>
+          <Button size="xs" variant="outline" onClick={onOpenSources}>Open Sources</Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** How many sources are failing — the title-bar button shows a dot for it. */
+export function useFailingSpecSources(projectId: number): number {
+  const { data: sources } = useSpecSources(projectId);
+  return failing(sources).length;
 }

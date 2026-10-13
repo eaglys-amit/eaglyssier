@@ -1,4 +1,4 @@
-import { FileCheck2, LayoutList, Loader2, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { FileCheck2, GitBranch, LayoutList, Loader2, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -46,7 +46,11 @@ import { useReferenceFiles } from "@/features/project-detail/tabs/documents/useR
 import { RepoTasksSection, PlanSection } from "./specs/RepoSpecSections";
 import { RequirementDialog, RequirementForm } from "./specs/RequirementDialog";
 import { ReviewQueue } from "./specs/ReviewQueue";
-import { SpecSources } from "./specs/SpecSources";
+import {
+  SpecSourcesDialog,
+  SpecSyncWarnings,
+  useFailingSpecSources,
+} from "./specs/SpecSources";
 import { UntracedWork } from "./specs/UntracedWork";
 import { changeBadge, CoverageBars, requirementStatusBadge } from "./specs/spec-ui";
 import { useSpec, useSpecList, useSpecMutations, useSpecReview } from "./specs/useSpecs";
@@ -206,8 +210,8 @@ function SpecListPanel({ projectId, selectedId, onSelect }: {
   );
 }
 
-/** Right panel with no spec chosen: the project-wide queues and sources. */
-function SpecsOverview({ projectId }: { projectId: number }) {
+/** Right panel with no spec chosen: the project-wide things that need action. */
+function SpecsOverview({ projectId, onOpenSources }: { projectId: number; onOpenSources: () => void }) {
   const { data: specs } = useSpecList(projectId);
   return (
     <div className="space-y-4">
@@ -215,12 +219,12 @@ function SpecsOverview({ projectId }: { projectId: number }) {
         <EmptyState
           icon={FileCheck2}
           title="No specs tracked yet"
-          hint="Track a PRD or design doc from the Documents tab, or turn on a repository below to read its spec-kit folders — then follow each requirement through to delivered work."
+          hint="Track a PRD or design doc with “Track a spec”, or connect a repository's spec-kit folders under “Sources” — then follow each requirement through to delivered work."
         />
       ) : null}
+      <SpecSyncWarnings projectId={projectId} onOpenSources={onOpenSources} />
       <ReviewQueue projectId={projectId} />
       <UntracedWork projectId={projectId} />
-      <SpecSources projectId={projectId} />
       {specs?.length ? (
         <p className="text-xs text-muted-foreground">Pick a spec on the left to see its requirements.</p>
       ) : null}
@@ -509,6 +513,8 @@ export function SpecsTab({ projectId }: { projectId: number }) {
   const { data: specs } = useSpecList(projectId);
   const { scan } = useSpecMutations(projectId);
   const [creating, setCreating] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const failingSources = useFailingSpecSources(projectId);
   const go = (id: number | null) =>
     setParams((p) => {
       const next = new URLSearchParams(p);
@@ -525,6 +531,13 @@ export function SpecsTab({ projectId }: { projectId: number }) {
           <RefreshCw className="size-3.5" /> {scan.isPending ? "Scanning…" : "Scan tickets for keys"}
         </Button>
       ) : null}
+      <Button size="sm" variant="outline" onClick={() => setSourcesOpen(true)}
+              title="Repositories whose spec-kit folders are read as specs">
+        <GitBranch className="size-3.5" /> Sources
+        {failingSources ? (
+          <span className="size-2 rounded-full bg-destructive" aria-label={`${failingSources} failing`} />
+        ) : null}
+      </Button>
       {access.can("spec") ? (
         <Button size="sm" onClick={() => setCreating(true)}>
           <Plus className="size-4" /> Track a spec
@@ -543,11 +556,12 @@ export function SpecsTab({ projectId }: { projectId: number }) {
           {specId ? (
             <SpecView key={specId} projectId={projectId} specId={specId} onRemoved={() => go(null)} />
           ) : (
-            <SpecsOverview projectId={projectId} />
+            <SpecsOverview projectId={projectId} onOpenSources={() => setSourcesOpen(true)} />
           )}
         </div>
       </div>
       <NewSpecDialog projectId={projectId} open={creating} onOpenChange={setCreating} onCreated={go} />
+      <SpecSourcesDialog projectId={projectId} open={sourcesOpen} onOpenChange={setSourcesOpen} />
     </TabShell>
   );
 }
