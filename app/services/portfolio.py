@@ -100,6 +100,7 @@ def _next_milestone(milestones: list[MilestoneOut]) -> PortfolioMilestone | None
     m = min(open_ms, key=lambda m: (m.target_date or date.max, m.rank))
     return PortfolioMilestone(
         id=m.id, name=m.name, target_date=m.target_date, forecast_date=m.forecast_date,
+        forecast_p85=m.forecast_p85, on_time_probability=m.on_time_probability,
         days_late=m.days_late, health=m.health, progress=m.progress,
     )
 
@@ -131,11 +132,17 @@ def project_health(
     red: list[str] = []
     amber: list[str] = []
     for m in open_ms:
+        chance = (
+            f" ({round(m.on_time_probability * 100)}% likely on time)"
+            if m.on_time_probability is not None else ""
+        )
         if m.health == "overdue":
             when = f"{m.days_late} days late" if m.days_late else "past its target"
             red.append(f"Milestone “{m.name}” is {when}")
+        elif m.health == "off_track":
+            red.append(f"Milestone “{m.name}” is unlikely to make its target{chance}")
         elif m.health == "at_risk":
-            amber.append(f"Milestone “{m.name}” is at risk")
+            amber.append(f"Milestone “{m.name}” is at risk{chance}")
 
     if sprint and sprint.scope_change is not None:
         pct = round(sprint.scope_change * 100)

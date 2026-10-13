@@ -135,7 +135,16 @@ function MilestoneCell({ project }: { project: PortfolioProject }) {
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         {milestoneHealthBadge(m.health)}
         <span>Target {m.target_date ? formatDate(m.target_date) : "—"}</span>
-        {m.forecast_date ? <span>· Forecast {formatDate(m.forecast_date)}</span> : null}
+        {m.on_time_probability !== null ? (
+          <span>· {Math.round(m.on_time_probability * 100)}% likely on time</span>
+        ) : null}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {m.forecast_date
+          ? m.forecast_p85 && m.forecast_p85 !== m.forecast_date
+            ? `Likely ${formatDate(m.forecast_date)} – ${formatDate(m.forecast_p85)}`
+            : `Forecast ${formatDate(m.forecast_date)}`
+          : null}
       </div>
     </div>
   );
@@ -172,8 +181,11 @@ export function PortfolioPage() {
     (a, b) => HEALTH[a.health].order - HEALTH[b.health].order || a.name.localeCompare(b.name),
   );
   const count = (h: PortfolioHealth) => projects.filter((p) => p.health === h).length;
-  const milestonesAt = (h: "at_risk" | "overdue") =>
-    projects.reduce((n, p) => n + (p.milestones_by_health[h] ?? 0), 0);
+  const milestonesAt = (...hs: ("at_risk" | "off_track" | "overdue")[]) =>
+    projects.reduce(
+      (n, p) => n + hs.reduce((k, h) => k + (p.milestones_by_health[h] ?? 0), 0),
+      0,
+    );
 
   return (
     <>
@@ -203,7 +215,10 @@ export function PortfolioPage() {
               <KpiStat label="Off track" value={count("red")} />
               <KpiStat label="Needs attention" value={count("amber")} />
               <KpiStat label="On track" value={count("green")} />
-              <KpiStat label="Milestones overdue" value={milestonesAt("overdue")} />
+              <KpiStat
+                label="Milestones off track"
+                value={milestonesAt("off_track", "overdue")}
+              />
               <KpiStat label="Milestones at risk" value={milestonesAt("at_risk")} />
             </div>
             <Card>
@@ -261,9 +276,11 @@ export function PortfolioPage() {
             </Card>
             {data ? (
               <p className="text-xs text-muted-foreground">
-                As of {formatDateTime(data.generated_at)}. Health turns amber for at-risk
-                milestones, sprint scope growth over 10%, recent velocity below 80% of the average,
-                or no sync for a week; red for overdue milestones or scope growth over 25%.
+                As of {formatDateTime(data.generated_at)}. Milestones are on track when at least
+                70% of simulated futures make the target, at risk from 30%, off track below.
+                Health turns amber for at-risk milestones, sprint scope growth over 10%, recent
+                velocity below 80% of the average, or no sync for a week; red for off-track or
+                overdue milestones, or scope growth over 25%.
               </p>
             ) : null}
           </>

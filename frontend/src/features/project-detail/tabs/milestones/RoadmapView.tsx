@@ -19,6 +19,7 @@ import { formatDate, formatPoints } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
 import type { Roadmap } from "@/types/api";
 
+import { formatChance } from "./forecast";
 import { GenerateButton } from "./GenerateDialog";
 import { RoadmapChart } from "./RoadmapChart";
 
@@ -60,7 +61,7 @@ export function RoadmapView({
   }
 
   const atRisk = data.milestones.filter(
-    (m) => m.health === "at_risk" || m.health === "overdue",
+    (m) => m.health === "at_risk" || m.health === "off_track" || m.health === "overdue",
   ).length;
   const remaining = data.milestones.reduce((sum, m) => sum + m.remaining_points, 0);
 
@@ -90,11 +91,19 @@ export function RoadmapView({
             <span>
               {formatDate(data.range_start)} → {formatDate(data.range_end)}
             </span>
-            {data.velocity_rolling3 || data.velocity_average ? (
+            {data.forecast_samples ? (
               <span>
-                · forecast at{" "}
+                · forecast simulated from the last {data.forecast_samples} closed sprints (
+                {data.sprint_length_days}-day){data.capacity_factor !== 1
+                  ? `, scaled ×${data.capacity_factor} for planned capacity`
+                  : ""}
+                ; milestones are worked in roadmap order
+              </span>
+            ) : data.velocity_rolling3 || data.velocity_average ? (
+              <span className="text-warning">
+                · low-confidence forecast at{" "}
                 {formatPoints(data.velocity_rolling3 || data.velocity_average)} pts per{" "}
-                {data.sprint_length_days}-day sprint
+                {data.sprint_length_days}-day sprint (fewer than 3 closed sprints)
               </span>
             ) : (
               <span className="text-warning">
@@ -107,8 +116,9 @@ export function RoadmapView({
           <span className="flex flex-wrap items-center gap-3">
             <LegendKey kind="bar" className="bg-primary/80" label="On track" />
             <LegendKey kind="bar" className="bg-warning/80" label="At risk" />
-            <LegendKey kind="bar" className="bg-destructive/80" label="Overdue" />
-            <LegendKey kind="dashed" className="stroke-warning" label="Forecast" />
+            <LegendKey kind="bar" className="bg-destructive/80" label="Off track / overdue" />
+            <LegendKey kind="bar" className="bg-foreground/15" label="Likely finish (P50–P85)" />
+            <LegendKey kind="dashed" className="stroke-warning" label="Slip past target" />
           </span>
         }
         table={<RoadmapTable data={data} />}
@@ -135,7 +145,9 @@ function RoadmapTable({ data }: { data: Roadmap }) {
           <TableHead>Milestone</TableHead>
           <TableHead className="w-28">Start</TableHead>
           <TableHead className="w-28">Target</TableHead>
-          <TableHead className="w-28">Forecast</TableHead>
+          <TableHead className="w-28">P50</TableHead>
+          <TableHead className="w-28">P85</TableHead>
+          <TableHead className="w-24 text-right">On time</TableHead>
           <TableHead className="w-20 text-right">Slip</TableHead>
           <TableHead className="w-20 text-right">Done</TableHead>
           <TableHead className="w-28 text-right">Points</TableHead>
@@ -147,7 +159,11 @@ function RoadmapTable({ data }: { data: Roadmap }) {
             <TableCell className="text-xs">{m.name}</TableCell>
             <TableCell className="text-xs">{formatDate(m.start_date)}</TableCell>
             <TableCell className="text-xs">{formatDate(m.target_date)}</TableCell>
-            <TableCell className="text-xs">{formatDate(m.forecast_date)}</TableCell>
+            <TableCell className="text-xs">{formatDate(m.forecast_p50)}</TableCell>
+            <TableCell className="text-xs">{formatDate(m.forecast_p85)}</TableCell>
+            <TableCell className="text-right font-mono text-xs tabular-nums">
+              {formatChance(m.on_time_probability) ?? "—"}
+            </TableCell>
             <TableCell className="text-right font-mono text-xs tabular-nums">
               {m.days_late === null ? "—" : m.days_late > 0 ? `+${m.days_late}d` : `${m.days_late}d`}
             </TableCell>

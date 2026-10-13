@@ -1262,6 +1262,8 @@ export type MilestoneState = "planned" | "in_progress" | "released" | "cancelled
 export type MilestoneHealth =
   | "on_track"
   | "at_risk"
+  /** Under 30% of simulated futures make the target. */
+  | "off_track"
   | "overdue"
   | "complete"
   | "unknown";
@@ -1308,8 +1310,18 @@ export interface Milestone {
 
   sprints: MilestoneSprintRef[];
 
-  /** null when velocity is 0 or nothing remains — an honest blank, not a guess. */
+  /** null when velocity is 0 or nothing remains — an honest blank, not a guess. Mirrors forecast_p50. */
   forecast_date: string | null;
+  /**
+   * Monte Carlo spread over recent sprint throughput, counting the work of
+   * milestones ahead in roadmap order. With too little history (confidence
+   * "low") both equal the single rolling-3 projection.
+   */
+  forecast_p50: string | null;
+  forecast_p85: string | null;
+  /** 0..1 share of simulated futures that finish by target_date. */
+  on_time_probability: number | null;
+  confidence: "high" | "low" | null;
   /** forecast_date - target_date in days. Negative = ahead of the date. */
   days_late: number | null;
   health: MilestoneHealth;
@@ -1352,6 +1364,10 @@ export interface Roadmap {
   velocity_rolling3: number;
   velocity_average: number;
   sprint_length_days: number;
+  /** Closed sprints the forecast resampled; 0 = too little history to simulate. */
+  forecast_samples: number;
+  /** Planned vs historical capacity applied to the simulation (1 = unadjusted). */
+  capacity_factor: number;
 }
 
 export interface MilestoneCreateIn {
@@ -1520,6 +1536,8 @@ export interface PortfolioMilestone {
   name: string;
   target_date: string | null;
   forecast_date: string | null;
+  forecast_p85: string | null;
+  on_time_probability: number | null;
   days_late: number | null;
   health: MilestoneHealth;
   progress: number;

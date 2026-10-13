@@ -18,7 +18,7 @@ export interface MilestoneBar {
   milestone: Milestone;
   /** Left edge of the bar. */
   left: number;
-  /** Full bar width, start → the later of target and forecast. */
+  /** Full bar width, start → the latest of target, forecast and P85. */
   width: number;
   /** Completed portion, `width * progress`. */
   fillWidth: number;
@@ -30,6 +30,11 @@ export interface MilestoneBar {
    * annotation, and drawing one would cry wolf.
    */
   forecast: { from: number; to: number } | null;
+  /**
+   * The likely finish window, P50 → P85. null when there's no forecast; a
+   * zero-width range (no spread, or low confidence) still marks the P50.
+   */
+  range: { from: number; to: number } | null;
 }
 
 export interface SprintBand {
@@ -66,11 +71,12 @@ export function buildRoadmap(data: Roadmap): RoadmapGeometry | null {
   const bars: MilestoneBar[] = data.milestones.map((milestone) => {
     const targetX = milestone.target_date ? scale.x(milestone.target_date) : null;
     const forecastX = milestone.forecast_date ? scale.x(milestone.forecast_date) : null;
+    const p85X = milestone.forecast_p85 ? scale.x(milestone.forecast_p85) : null;
 
     // An undated milestone still gets a row and a diamond-less bar stub at its
     // earliest known point, so it isn't silently dropped from the roadmap.
     const left = milestone.start_date ? scale.x(milestone.start_date) : (targetX ?? 0);
-    const right = Math.max(targetX ?? left, forecastX ?? left, left + MIN_BAR);
+    const right = Math.max(targetX ?? left, forecastX ?? left, p85X ?? left, left + MIN_BAR);
     const width = Math.max(MIN_BAR, right - left);
 
     return {
@@ -84,6 +90,7 @@ export function buildRoadmap(data: Roadmap): RoadmapGeometry | null {
         forecastX !== null && targetX !== null && (milestone.days_late ?? 0) > 0
           ? { from: targetX, to: forecastX }
           : null,
+      range: forecastX !== null ? { from: forecastX, to: p85X ?? forecastX } : null,
     };
   });
 

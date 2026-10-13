@@ -2,6 +2,7 @@ import { formatDate, formatPoints } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Milestone, Roadmap } from "@/types/api";
 
+import { forecastSentence } from "./forecast";
 import { buildRoadmap, type MilestoneBar, type RoadmapGeometry } from "./roadmap";
 
 /**
@@ -27,6 +28,7 @@ function fillClass(health: Milestone["health"]): string {
     case "complete":
       return "bg-success/80";
     case "overdue":
+    case "off_track":
       return "bg-destructive/80";
     case "at_risk":
       return "bg-warning/80";
@@ -44,12 +46,11 @@ function barTooltip(m: Milestone): string {
     `${formatDate(m.start_date)} → ${formatDate(m.target_date)}`,
     `${pct}% · ${formatPoints(m.completed_points)} / ${formatPoints(m.total_points)} pts`,
   ];
-  if (m.forecast_date) {
+  const sentence = forecastSentence(m);
+  if (sentence) {
     const late = m.days_late ?? 0;
-    lines.push(
-      `Forecast ${formatDate(m.forecast_date)}` +
-        (late > 0 ? ` (${late}d late)` : late < 0 ? ` (${-late}d early)` : ""),
-    );
+    lines.push(sentence);
+    if (late) lines.push(late > 0 ? `Median ${late}d after target` : `Median ${-late}d early`);
   }
   return lines.join("\n");
 }
@@ -95,6 +96,25 @@ function MilestoneRow({
       >
         <div className={cn("h-full", fillClass(m.health))} style={{ width: bar.fillWidth }} />
       </div>
+
+      {/* Likely finish window: P50 tick plus a band out to P85. Over the
+          track (which is opaque) but translucent, so progress shows through. */}
+      {bar.range ? (
+        <>
+          <div
+            className="pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-sm bg-foreground/15"
+            style={{
+              left: bar.range.from,
+              width: Math.max(2, bar.range.to - bar.range.from),
+              height: BAR_H + 6,
+            }}
+          />
+          <div
+            className="pointer-events-none absolute top-1/2 w-0.5 -translate-y-1/2 bg-foreground/60"
+            style={{ left: bar.range.from, height: BAR_H + 6 }}
+          />
+        </>
+      ) : null}
 
       {/* Target date: a rotated square, drawn last so a short bar can't hide it. */}
       {bar.targetX !== null ? (
