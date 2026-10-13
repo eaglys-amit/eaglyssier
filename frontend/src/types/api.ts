@@ -44,6 +44,25 @@ export interface Member {
   primary_email: string | null;
 }
 
+export interface Me {
+  id: number;
+  email: string;
+  is_admin: boolean;
+  member_id: number | null;
+  display_name: string;
+  memberships: { project_id: number; role: ProjectRole }[];
+}
+
+export interface UserAccount {
+  id: number;
+  email: string;
+  is_admin: boolean;
+  is_active: boolean;
+  member_id: number | null;
+  member_name: string | null;
+  last_login_at: string | null;
+}
+
 export interface Identity {
   id: number;
   system: string;
@@ -60,8 +79,15 @@ export interface PlatformIdentities {
   accounts: Identity[];
 }
 
+export type ProjectRole = "vp_product" | "tech_lead" | "project_manager" | "developer";
+
+export interface ProjectMemberRow extends Member {
+  role: ProjectRole;
+  has_login: boolean;
+}
+
 export interface ProjectMembers {
-  members: Member[];
+  members: ProjectMemberRow[];
   available: Member[];
   identities: PlatformIdentities[];
 }
@@ -1471,4 +1497,53 @@ export interface EpicNames {
 
 export interface EpicRenameResult {
   renamed: number;
+}
+
+// ---------------------------------------------------------------- portfolio
+
+export type PortfolioHealth = "green" | "amber" | "red" | "unknown";
+
+export interface PortfolioSprint {
+  id: number;
+  name: string;
+  start_date: string | null;
+  end_date: string | null;
+  baseline_points: number | null;
+  total_points: number;
+  completed_points: number;
+  progress: number;
+  scope_change: number | null;
+}
+
+export interface PortfolioMilestone {
+  id: number;
+  name: string;
+  target_date: string | null;
+  forecast_date: string | null;
+  days_late: number | null;
+  health: MilestoneHealth;
+  progress: number;
+}
+
+export interface PortfolioProject {
+  id: number;
+  name: string;
+  key: string | null;
+  role: ProjectRole | null;
+  health: PortfolioHealth;
+  health_reasons: string[];
+  active_sprint: PortfolioSprint | null;
+  velocity_rolling3: number;
+  velocity_average: number;
+  velocity_trend: number | null;
+  velocity_series: { name: string; completed_points: number }[];
+  milestones_by_health: Partial<Record<MilestoneHealth, number>>;
+  next_milestone: PortfolioMilestone | null;
+  last_synced_at: string | null;
+  last_sync_failed: boolean;
+}
+
+export interface Portfolio {
+  projects: PortfolioProject[];
+  generated_at: string;
 }

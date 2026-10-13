@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { BrandLink } from "@/components/layout/BrandLink";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { UserMenu } from "@/features/auth/UserMenu";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
@@ -133,7 +134,12 @@ export function MembersPage() {
         leading={<BrandLink />}
         title="Members"
         description="The curated people directory. Map accounts to members inside each project."
-        actions={<ThemeToggle />}
+        actions={
+          <>
+            <UserMenu />
+            <ThemeToggle />
+          </>
+        }
       />
       <MemberFormDialog
         open={dialog.open}

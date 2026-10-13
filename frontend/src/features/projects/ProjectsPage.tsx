@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { BrandLink } from "@/components/layout/BrandLink";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { UserMenu } from "@/features/auth/UserMenu";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
+import { useAccess } from "@/lib/permissions";
 import { qk } from "@/lib/query-keys";
 import type { ProjectDetail, ProjectListItem } from "@/types/api";
 
@@ -114,6 +116,9 @@ function NewProjectDialog() {
 
 export function ProjectsPage() {
   const qc = useQueryClient();
+  // Creating and deleting projects is admin-only; everyone else sees the
+  // projects they are a member of.
+  const { isAdmin } = useAccess();
   const { data: projects, isPending } = useQuery({
     queryKey: qk.projects,
     queryFn: () => api.get<ProjectListItem[]>("/projects"),
@@ -133,12 +138,17 @@ export function ProjectsPage() {
         leading={<BrandLink />}
         title="Projects"
         description="Agile project reports from Jira, GitHub, and GitLab data."
-        actions={<ThemeToggle />}
+        actions={
+          <>
+            <UserMenu />
+            <ThemeToggle />
+          </>
+        }
       />
       <div className="p-6">
       {/* The empty state carries its own create button, so the toolbar steps
           aside for it. */}
-      {isPending || projects?.length ? (
+      {isAdmin && (isPending || projects?.length) ? (
         <div className="mb-4 flex justify-end">
           <NewProjectDialog />
         </div>
@@ -149,8 +159,12 @@ export function ProjectsPage() {
         <EmptyState
           icon={FolderKanban}
           title="No projects yet"
-          hint="Create your first project to start syncing sprints, tasks, and repositories."
-          action={<NewProjectDialog />}
+          hint={
+            isAdmin
+              ? "Create your first project to start syncing sprints, tasks, and repositories."
+              : "You haven't been added to a project yet. Ask a project manager or an admin."
+          }
+          action={isAdmin ? <NewProjectDialog /> : undefined}
         />
       ) : (
         <Card>
@@ -186,6 +200,7 @@ export function ProjectsPage() {
                       {p.task_count}
                     </TableCell>
                     <TableCell>
+                      {isAdmin ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="size-8">
@@ -209,6 +224,7 @@ export function ProjectsPage() {
                           />
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}

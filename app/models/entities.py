@@ -43,6 +43,15 @@ class SyncStatus(str, enum.Enum):
     failed = "failed"
 
 
+class ProjectRole(str, enum.Enum):
+    """A member's role on one project; see app.api.authz for what each may do."""
+
+    vp_product = "vp_product"
+    tech_lead = "tech_lead"
+    project_manager = "project_manager"
+    developer = "developer"
+
+
 class ReportStatus(str, enum.Enum):
     pending = "pending"
     generating = "generating"
@@ -150,6 +159,12 @@ class ProjectMember(Base, TimestampMixin):
     # null, "end_date": null}. KPI/Evaluation generation for this member reads it.
     analysis_scope: Mapped[dict | None] = mapped_column(JSON)
 
+    # ProjectRole value; decides what the linked user may do in this project.
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=ProjectRole.developer.value,
+        server_default=ProjectRole.developer.value,
+    )
+
     # LLM-generated KPI from this member's commits + Jira tasks (see app.services.kpi).
     kpi_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="none", server_default="none"
@@ -161,6 +176,38 @@ class ProjectMember(Base, TimestampMixin):
 
     project: Mapped["Project"] = relationship(back_populates="members")
     member: Mapped["Member"] = relationship(back_populates="project_links")
+
+
+class User(Base, TimestampMixin):
+    """A login. Linked to a curated Member, whose ProjectMember rows carry the
+    per-project roles; `is_admin` is independent of those roles."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"), unique=True
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    member: Mapped["Member | None"] = relationship()
+
+
+class UserSession(Base, TimestampMixin):
+    """A server-side login session; the cookie holds the token, we store its hash."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    user: Mapped["User"] = relationship()
 
 
 class EvaluationSheet(Base, TimestampMixin):

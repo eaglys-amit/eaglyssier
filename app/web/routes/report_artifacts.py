@@ -9,11 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
+from app.api.authz import authorize
 from app.db import get_db
 from app.models import Report
 from app.storage import rustfs
 
-router = APIRouter()
+# Same login + role check as /api (report_id resolves to its project).
+router = APIRouter(dependencies=[Depends(authorize)])
 
 
 @router.get("/reports/{report_id}/view", response_class=HTMLResponse)

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.authz import Access, get_access, memberships
 from app.api.deps import get_or_404
 from app.db import get_db
 from app.models import Project, Task
@@ -34,8 +35,11 @@ def _detail(project: Project) -> ProjectDetail:
 
 
 @router.get("/projects", response_model=list[ProjectListItem])
-def list_projects(db: Session = Depends(get_db)):
-    projects = db.execute(select(Project).order_by(Project.name)).scalars().all()
+def list_projects(db: Session = Depends(get_db), access: Access = Depends(get_access)):
+    stmt = select(Project).order_by(Project.name)
+    if not access.is_admin:
+        stmt = stmt.where(Project.id.in_(memberships(db, access.user) or [-1]))
+    projects = db.execute(stmt).scalars().all()
     counts = dict(
         db.execute(
             select(Task.project_id, func.count(Task.id)).group_by(Task.project_id)

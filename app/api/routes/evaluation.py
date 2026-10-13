@@ -5,9 +5,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.authz import Access, get_access
 from app.api.deps import get_or_404, run_in_session
 from app.db import get_db
-from app.models import EvaluationSheet, Project, ProjectMember
+from app.models import EvaluationSheet, Project, ProjectMember, ProjectRole
 from app.schemas.evaluation import (
     EvaluationSheetIn,
     EvaluationSheetOut,
@@ -30,6 +31,37 @@ _JOBS = {
     "generate-results": ("results", generate_results),
     "validate": ("checklist", run_checklist),
 }
+
+
+# Who may write which sheet fields. The member owning the sheet fills in the
+# "self" side; the tech lead grades; the project manager (and admins) own the
+# final grade. Unlisted changes are refused rather than silently dropped.
+_SELF_FIELDS = {"planned_goal", "key_results", "self_eval", "evidence"}
+_ROLE_FIELDS = {
+    ProjectRole.tech_lead.value: {
+        "planned_goal", "key_results", "tech_lead_eval", "tech_lead_name", "evidence",
+    },
+}
+
+
+def _check_writable(access: Access, member_id: int, sheet: EvaluationSheet | None,
+                    body: EvaluationSheetIn) -> None:
+    if access.is_admin or access.role == ProjectRole.project_manager.value:
+        return
+    allowed = set(_ROLE_FIELDS.get(access.role or "", set()))
+    if member_id == access.member_id:
+        allowed |= _SELF_FIELDS
+    stored = {**default_axes(), **((sheet.axes if sheet else None) or {})}
+    changed: set[str] = set()
+    for key, cells in body.axes.items():
+        before = stored.get(key) or {}
+        changed |= {f for f, v in cells.model_dump().items() if before.get(f) != v}
+    if (body.evidence or None) != (sheet.evidence if sheet else None):
+        changed.add("evidence")
+    if (body.tech_lead_name or None) != (sheet.tech_lead_name if sheet else None):
+        changed.add("tech_lead_name")
+    if denied := sorted(changed - allowed):
+        raise HTTPException(403, f"Your role cannot change: {', '.join(denied)}")
 
 
 def _sheet_out(project: Project, member_id: int, display_name: str,
@@ -102,13 +134,20 @@ def _reject_if_running(sheet: EvaluationSheet | None) -> None:
 
 
 @router.get("/projects/{project_id}/evaluation", response_model=list[EvaluationSummaryOut])
-def evaluation_list(project_id: int, db: Session = Depends(get_db)):
+def evaluation_list(
+    project_id: int,
+    db: Session = Depends(get_db),
+    access: Access = Depends(get_access),
+):
     get_or_404(db, Project, project_id)
-    pms = db.execute(
+    stmt = (
         select(ProjectMember)
         .where(ProjectMember.project_id == project_id)
         .options(selectinload(ProjectMember.member))
-    ).scalars().all()
+    )
+    if not access.sees_all_people:
+        stmt = stmt.where(ProjectMember.member_id == access.member_id)
+    pms = db.execute(stmt).scalars().all()
     # Polled every 2s while a job runs — skip the heavy axes/evidence columns.
     sheets = {
         row.member_id: row
@@ -157,10 +196,13 @@ def evaluation_save(
     member_id: int,
     body: EvaluationSheetIn,
     db: Session = Depends(get_db),
+    access: Access = Depends(get_access),
 ):
     project = get_or_404(db, Project, project_id)
     pm = _get_pm(db, project_id, member_id)
-    _reject_if_running(_get_sheet(db, project_id, member_id))
+    existing = _get_sheet(db, project_id, member_id)
+    _reject_if_running(existing)
+    _check_writable(access, member_id, existing, body)
 
     sheet = get_or_create_sheet(db, project_id, member_id)
     # Merge per axis key so a partial payload never blanks the other axes.

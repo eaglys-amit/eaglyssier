@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.authz import Access, get_access
 from app.api.deps import get_or_404, run_in_session
 from app.db import get_db
 from app.models import Project, ProjectMember
@@ -36,9 +37,16 @@ def _project_members(db: Session, project_id: int) -> list[ProjectMember]:
 
 
 @router.get("/projects/{project_id}/kpi", response_model=list[KpiOut])
-def kpi_list(project_id: int, db: Session = Depends(get_db)):
+def kpi_list(
+    project_id: int,
+    db: Session = Depends(get_db),
+    access: Access = Depends(get_access),
+):
     get_or_404(db, Project, project_id)
-    return [_kpi_out(pm) for pm in _project_members(db, project_id)]
+    return [
+        _kpi_out(pm) for pm in _project_members(db, project_id)
+        if access.sees_all_people or pm.member_id == access.member_id
+    ]
 
 
 @router.post("/projects/{project_id}/kpi", response_model=list[KpiOut], status_code=202)

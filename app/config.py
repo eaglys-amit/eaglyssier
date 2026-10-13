@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # Secret used to derive the Fernet key that encrypts stored integration credentials.
     secret_key: str = "change-me-32-byte-dev-secret-key!"
 
+    # Login sessions (see app.services.auth). COOKIE_SECURE=true once served over HTTPS.
+    session_days: int = 14
+    cookie_secure: bool = False
+    # First admin, created on startup only while the users table is empty.
+    admin_email: str | None = None
+    admin_password: str | None = None
+
     run_scheduler: bool = True
     sync_interval_minutes: int = 60
 

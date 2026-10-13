@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 
+import { NoAccess } from "@/components/shared/NoAccess";
+import { useAccess } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 import { useProject } from "@/features/project-detail/ProjectShell";
 import { PROJECT_SETTINGS } from "@/features/project-detail/settings-nav";
-import { DEFAULT_TAB, isTabKey, PROJECT_TABS, type TabKey } from "@/features/project-detail/tabs-nav";
+import {
+  DEFAULT_TAB,
+  isTabKey,
+  PROJECT_TABS,
+  tabCap,
+  type TabKey,
+} from "@/features/project-detail/tabs-nav";
 import { CapacityTab } from "@/features/project-detail/tabs/CapacityTab";
 import { DataTab } from "@/features/project-detail/tabs/DataTab";
 import { DeliverablesTab } from "@/features/project-detail/tabs/DeliverablesTab";
@@ -43,6 +51,8 @@ export function ProjectDetailLayout() {
   }, [location.hash, location.search, navigate, projectId, tabParam]);
 
   const tab: TabKey = isTabKey(tabParam) ? tabParam : DEFAULT_TAB;
+  const access = useAccess(projectId);
+  const allowed = access.can(tabCap(tab));
 
   // Once the user starts a terminal session it stays mounted (hidden) across
   // tab switches so the PTY survives; it ends when they leave the project.
@@ -55,7 +65,7 @@ export function ProjectDetailLayout() {
       {/* h-13 + border-b matches the sidebar header, so the two line up across
           the seam. Sticky: the strip stays put while a long tab scrolls. */}
       <nav className="sticky top-0 z-30 flex h-13 shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-6">
-        {PROJECT_TABS.map((t) => (
+        {PROJECT_TABS.filter((t) => access.can(tabCap(t.key))).map((t) => (
           <NavLink
             key={t.key}
             to={`/projects/${projectId}/${t.key}`}
@@ -74,14 +84,18 @@ export function ProjectDetailLayout() {
       </nav>
 
       <div className="min-h-0 flex-1">
-        <div className={tab === "terminal" ? "block h-full" : "hidden"}>
-          <TerminalTab
-            projectId={projectId}
-            started={terminalStarted}
-            onStart={() => setTerminalStarted(true)}
-            onEnd={() => setTerminalStarted(false)}
-          />
-        </div>
+        {!allowed && <NoAccess />}
+        {access.can("terminal") && (
+          <div className={tab === "terminal" ? "block h-full" : "hidden"}>
+            <TerminalTab
+              projectId={projectId}
+              started={terminalStarted}
+              onStart={() => setTerminalStarted(true)}
+              onEnd={() => setTerminalStarted(false)}
+            />
+          </div>
+        )}
+        {allowed && <>
         {tab === "data" && <DataTab projectId={projectId} />}
         {tab === "documents" && <DocumentsTab projectId={projectId} />}
         {tab === "scrums" && <ScrumsTab projectId={projectId} />}
@@ -97,6 +111,7 @@ export function ProjectDetailLayout() {
         {tab === "kpi" && <KpiTab projectId={projectId} />}
         {tab === "capacity" && <CapacityTab projectId={projectId} />}
         {tab === "evaluation" && <EvaluationTab projectId={projectId} />}
+        </>}
       </div>
     </div>
   );

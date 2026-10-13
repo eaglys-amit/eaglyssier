@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 from app.schemas.common import ApiModel
 
+ProjectRoleName = Literal["vp_product", "tech_lead", "project_manager", "developer"]
+
 
 class MemberOut(ApiModel):
     id: int
@@ -39,14 +41,24 @@ class PlatformIdentities(BaseModel):
     accounts: list[IdentityOut]
 
 
+class ProjectMemberOut(MemberOut):
+    role: str
+    has_login: bool = False
+
+
 class ProjectMembersOut(BaseModel):
-    members: list[MemberOut]
+    members: list[ProjectMemberOut]
     available: list[MemberOut]
     identities: list[PlatformIdentities]
 
 
 class ProjectMemberAdd(BaseModel):
     member_id: int
+    role: ProjectRoleName = "developer"
+
+
+class ProjectRoleIn(BaseModel):
+    role: ProjectRoleName
 
 
 class IdentityMappingIn(BaseModel):

@@ -8,6 +8,12 @@ export class ApiError extends Error {
   }
 }
 
+export function redirectToLogin() {
+  if (window.location.pathname === "/login") return;
+  const next = window.location.pathname + window.location.search;
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -27,6 +33,11 @@ async function request<T>(
       ...init?.headers,
     },
   });
+  // Session gone (expired, logged out elsewhere, deactivated): back to the
+  // login page, then return here. /auth/* answers 401 as part of its own flow.
+  if (res.status === 401 && !path.startsWith("/auth/")) {
+    redirectToLogin();
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {

@@ -4,10 +4,12 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { BrandLink } from "@/components/layout/BrandLink";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Badge } from "@/components/ui/badge";
+import { UserMenu } from "@/features/auth/UserMenu";
+import { useAccess } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type { ProjectDetail } from "@/types/api";
 
-import { PROJECT_SETTINGS } from "@/features/project-detail/settings-nav";
+import { PROJECT_SETTINGS, settingsCap } from "@/features/project-detail/settings-nav";
 import { DEFAULT_TAB } from "@/features/project-detail/tabs-nav";
 
 const ITEM_CLASS =
@@ -36,6 +38,7 @@ export function ProjectSidebar({
   // it is active whenever the URL isn't one of the setup sections.
   const section = useLocation().pathname.split("/")[3] ?? "";
   const analyzerActive = !PROJECT_SETTINGS.some((s) => s.key === section);
+  const access = useAccess(projectId);
 
   return (
     <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
@@ -94,7 +97,7 @@ export function ProjectSidebar({
             Setup
           </div>
           <ul className="space-y-0.5">
-            {PROJECT_SETTINGS.map((s) => (
+            {PROJECT_SETTINGS.filter((s) => access.can(settingsCap(s.key))).map((s) => (
               <li key={s.key}>
                 <NavLink
                   to={`/projects/${projectId}/${s.key}`}
@@ -112,7 +115,7 @@ export function ProjectSidebar({
       </nav>
 
       <div className="flex items-center justify-between border-t px-3 py-2.5">
-        <span className="text-xs text-muted-foreground">Theme</span>
+        <UserMenu projectId={projectId} />
         <ThemeToggle />
       </div>
     </aside>
