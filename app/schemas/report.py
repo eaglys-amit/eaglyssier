@@ -136,6 +136,55 @@ class ProjectInfo(BaseModel):
     description: str | None = None
 
 
+class ExecRisk(BaseModel):
+    risk: str
+    impact: str | None = None
+    mitigation: str | None = None
+
+
+class ExecNarrative(BaseModel):
+    """The AI-written prose of an executive report, grounded in the data around it."""
+
+    headline: str
+    shipped: list[str] = Field(default_factory=list)
+    risks: list[ExecRisk] = Field(default_factory=list)
+    decisions: list[str] = Field(default_factory=list)
+
+
+class ShippedTask(BaseModel):
+    key: str | None = None
+    title: str
+    story_points: float | None = None
+    epic: str | None = None
+
+
+class ExecutiveSection(BaseModel):
+    """What only the executive report carries, on top of the standard context.
+
+    `portfolio` is the project's Portfolio row (health, active sprint,
+    velocity, next milestone) and `milestones` the roadmap with its forecast —
+    current state, whatever the report's period. `shipped` is the period's
+    finished work, the fallback when there's no narrative.
+    """
+
+    # app.schemas.portfolio.PortfolioProject / app.schemas.milestone.MilestoneOut;
+    # typed loosely to keep this module free of API-schema imports.
+    portfolio: dict
+    # Open milestones only (finished ones are just counted): leadership reads
+    # what's ahead, and 20 completed rows would bury it.
+    milestones: list[dict] = Field(default_factory=list)
+    milestones_done: int = 0
+    # Whole-project scope: the recorded deliverables are a fair "what shipped".
+    # For a period they're all-time, so the period's finished tasks are used.
+    whole_project: bool = True
+    shipped: list[ShippedTask] = Field(default_factory=list)
+    shipped_more: int = 0
+    narrative: ExecNarrative | None = None
+    # Why there's no narrative (provider error, not configured), if there isn't.
+    narrative_error: str | None = None
+    narrative_model: str | None = None
+
+
 class ReportContext(BaseModel):
     title: str
     report_type: str = "sprint"
@@ -165,3 +214,5 @@ class ReportContext(BaseModel):
         return round(100 * self.scope_added_sp / self.scope_baseline_sp, 1) if self.scope_baseline_sp else 0.0
     # rendered SVG chart markup keyed by name
     charts: dict[str, str] = Field(default_factory=dict)
+    # executive report only
+    executive: ExecutiveSection | None = None

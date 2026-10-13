@@ -34,6 +34,8 @@ export interface ProjectDetail {
   deliverables_error: string | null;
   deliverables_model: string | null;
   deliverables_generated_at: string | null;
+  /** A weekly executive report is generated every Monday for the past 7 days. */
+  exec_report_weekly: boolean;
   analysis_providers: AnalysisProvider[];
   claude_models: string[];
 }

@@ -1,0 +1,38 @@
+{# Executive report: health, the one-line headline, and four numbers. #}
+{% from "macros/kpi.html.j2" import kpi_row %}
+{% set ex = ctx.executive %}
+{% set row = ex.portfolio %}
+{% set labels = {'green': 'On track', 'amber': 'Needs attention', 'red': 'Off track', 'unknown': 'No data'} %}
+{% set next = row.next_milestone %}
+{% set when = 'to date' if ex.whole_project else 'in the period' %}
+{% set done_sp = '%g'|format(ctx.summary.completed_sp) %}
+{% set plan_sp = '%g'|format(ctx.summary.assigned_sp) %}
+<section>
+  <div class="card callout">
+    <span class="pill {{ row.health }}">{{ labels[row.health] }}</span>
+    <p class="headline">
+      {% if ex.narrative %}{{ ex.narrative.headline }}
+      {% else %}{% if ctx.summary.assigned_sp %}Delivered {{ done_sp }} of {{ plan_sp }} story points
+        ({{ ctx.summary.completion_rate }}%) {{ when }}{% else %}No story points were planned {{ when }}{% endif %}{% if next %}; next milestone
+        “{{ next.name }}” is {{ next.health|replace('_', ' ') }}{% endif %}.
+      {% endif %}
+    </p>
+    {% if row.health_reasons %}
+    <ul class="reasons">
+      {% for r in row.health_reasons %}<li>{{ r }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {{ kpi_row([
+    {'value': done_sp ~ ' / ' ~ plan_sp, 'label': 'Story points delivered',
+     'sub': (ctx.summary.completion_rate ~ '% of planned ' ~ when) if ctx.summary.assigned_sp else 'nothing planned ' ~ when},
+    {'value': row.velocity_rolling3, 'label': 'Velocity (last 3)',
+     'sub': ((row.velocity_trend * 100)|round|int ~ '% of average') if row.velocity_trend is not none else 'points per sprint'},
+    {'value': (row.active_sprint.progress * 100)|round|int ~ '%' if row.active_sprint else '—',
+     'label': 'Active sprint done',
+     'sub': row.active_sprint.name if row.active_sprint else 'no active sprint'},
+    {'value': ((next.on_time_probability * 100)|round|int ~ '%') if next and next.on_time_probability is not none else '—',
+     'label': 'Next milestone on time',
+     'sub': next.name if next else 'no open milestones'},
+  ]) }}
+</section>

@@ -135,6 +135,7 @@ POLICY: list[tuple[str, Cap]] = [
     ("* /poker/*", Cap.POKER_FACILITATE),
     # --- reports & deliverables ---
     ("POST /projects/{project_id}/reports", Cap.REPORT),
+    ("PUT /projects/{project_id}/reports/executive-schedule", Cap.REPORT),
     ("DELETE /reports/{report_id}", Cap.REPORT),
     ("POST /projects/{project_id}/deliverables/*", Cap.REPORT),
     # --- backlog / scrum ---

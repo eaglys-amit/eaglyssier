@@ -7,16 +7,27 @@ from sqlalchemy.orm import Session
 
 from app.models import Report, ReportStatus
 from app.reporting.charts import build_charts
+from app.services.exec_report import build_executive_context
 from app.services.metrics import build_report_context
 from app.storage import rustfs
 from app.templating import render
 
-_TEMPLATE = {"sprint": "reports/sprint_report.html.j2", "project": "reports/project_report.html.j2"}
+_TEMPLATE = {
+    "sprint": "reports/sprint_report.html.j2",
+    "project": "reports/project_report.html.j2",
+    "executive": "reports/executive_report.html.j2",
+}
+
+# scope["kind"] picks the report family; the rest of the scope is the period.
+EXECUTIVE = "executive"
 
 
 def render_report_html(db: Session, project_id: int, scope: dict | None) -> tuple[str, str]:
     """Build context and return (title, html). Reused by preview and generation."""
-    ctx = build_report_context(db, project_id, scope)
+    if (scope or {}).get("kind") == EXECUTIVE:
+        ctx = build_executive_context(db, project_id, scope or {})
+    else:
+        ctx = build_report_context(db, project_id, scope)
     ctx.charts = build_charts(ctx)
     template = _TEMPLATE.get(ctx.report_type, _TEMPLATE["sprint"])
     html = render(template, ctx=ctx)

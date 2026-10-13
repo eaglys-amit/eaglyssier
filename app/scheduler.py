@@ -6,14 +6,16 @@ separate worker/broker in iteration 1.
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
 
 from app.config import settings
 from app.db import SessionLocal
-from app.models import Integration, IntegrationType
+from app.models import Integration, IntegrationType, Project, Report, ReportStatus
 from app.services.burndown import snapshot_all_active
+from app.services.reports import EXECUTIVE, generate_report
 from app.services.sync import sync_integration
 
 log = logging.getLogger("scheduler")
@@ -61,6 +63,41 @@ def snapshot_active_sprints() -> None:
         db.close()
 
 
+def weekly_exec_scope(today: date) -> dict:
+    """The past seven days, ending yesterday: the week the Monday report covers."""
+    return {
+        "kind": EXECUTIVE,
+        "start": (today - timedelta(days=7)).isoformat(),
+        "end": (today - timedelta(days=1)).isoformat(),
+    }
+
+
+def generate_weekly_exec_reports() -> None:
+    """Monday: an executive report for every project that opted in."""
+    db = SessionLocal()
+    try:
+        project_ids = db.execute(
+            select(Project.id).where(Project.exec_report_weekly.is_(True))
+        ).scalars().all()
+        scope = weekly_exec_scope(date.today())
+        for pid in project_ids:
+            try:
+                report = Report(
+                    project_id=pid, report_type="executive", scope=dict(scope),
+                    title="Weekly executive summary (generating…)", status=ReportStatus.pending,
+                )
+                db.add(report)
+                db.commit()
+                generate_report(db, report.id)
+                log.info("Weekly executive report %s for project %s: %s",
+                         report.id, pid, report.status)
+            except Exception:  # noqa: BLE001
+                db.rollback()
+                log.exception("Weekly executive report failed for project %s", pid)
+    finally:
+        db.close()
+
+
 def start() -> None:
     if scheduler.running:
         return
@@ -79,6 +116,16 @@ def start() -> None:
         hour=0,
         minute=5,
         id="snapshot_sprints",
+        replace_existing=True,
+    )
+    # Monday morning (09:30 JST): last week's executive summary is ready to read.
+    scheduler.add_job(
+        generate_weekly_exec_reports,
+        "cron",
+        day_of_week="mon",
+        hour=0,
+        minute=30,
+        id="exec_reports",
         replace_existing=True,
     )
     scheduler.start()

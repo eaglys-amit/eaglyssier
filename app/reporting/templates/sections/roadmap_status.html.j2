@@ -1,0 +1,39 @@
+{# Executive report: the roadmap with its Monte Carlo forecast. #}
+{% from "macros/chart.html.j2" import chart %}
+{% set ms = ctx.executive.milestones %}
+<section>
+  <h2>Roadmap</h2>
+  {% if ms %}
+  <div class="card splittable">
+    {% if ctx.charts.roadmap %}{{ chart(ctx.charts.roadmap, "Bars span the likely finish (P50–P85); ◆ marks the target date.") }}{% endif %}
+    <table>
+      <thead><tr>
+        <th>Milestone</th><th>Target</th><th>Likely (P50)</th><th>Late case (P85)</th>
+        <th class="num">On time</th><th class="num">Done</th><th>Health</th>
+      </tr></thead>
+      <tbody>
+      {% for m in ms %}
+        <tr>
+          <td>{{ m.name }}</td>
+          <td>{{ m.target_date or '—' }}</td>
+          <td>{{ m.forecast_p50 or '—' }}</td>
+          <td>{{ m.forecast_p85 or '—' }}</td>
+          <td class="num">{{ ((m.on_time_probability * 100)|round|int ~ '%') if m.on_time_probability is not none else '—' }}</td>
+          <td class="num">{{ (m.progress * 100)|round|int }}%</td>
+          <td><span class="pill {{ m.health }}">{{ m.health|replace('_', ' ') }}</span>
+            {% if m.confidence == 'low' %}<span class="muted" style="font-size:11px">low confidence</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if ctx.executive.milestones_done %}
+    <p class="muted" style="font-size:12px; margin:8px 0 0">
+      Plus {{ ctx.executive.milestones_done }} completed milestone{{ 's' if ctx.executive.milestones_done != 1 }}.</p>
+    {% endif %}
+  </div>
+  {% elif ctx.executive.milestones_done %}
+  <div class="card muted">All {{ ctx.executive.milestones_done }} milestones are complete; nothing open on the roadmap.</div>
+  {% else %}
+  <div class="card muted">No milestones defined yet.</div>
+  {% endif %}
+</section>

@@ -1,0 +1,32 @@
+{# Executive report: risks (AI, else the health reasons) and decisions needed. #}
+{% set ex = ctx.executive %}
+<section>
+  <h2>Risks</h2>
+  <div class="card">
+  {% if ex.narrative and ex.narrative.risks %}
+    <table>
+      <thead><tr><th>Risk</th><th>Impact</th><th>Suggested mitigation</th></tr></thead>
+      <tbody>
+      {% for r in ex.narrative.risks %}
+        <tr><td>{{ r.risk }}</td><td>{{ r.impact or '—' }}</td><td>{{ r.mitigation or '—' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% elif ex.portfolio.health_reasons %}
+    <ul class="exec">{% for r in ex.portfolio.health_reasons %}<li class="flag">{{ r }}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="muted">No risks flagged by the data.</p>
+  {% endif %}
+  </div>
+
+  <h2>Decisions needed</h2>
+  <div class="card">
+  {% if ex.narrative and ex.narrative.decisions %}
+    <ol class="exec">{% for d in ex.narrative.decisions %}<li>{{ d }}</li>{% endfor %}</ol>
+  {% elif ex.narrative %}
+    <p class="muted">None this period.</p>
+  {% else %}
+    <p class="muted">Not assessed (needs the AI summary).</p>
+  {% endif %}
+  </div>
+</section>
