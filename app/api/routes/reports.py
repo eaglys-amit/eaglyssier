@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_or_404, run_in_session
 from app.db import get_db
 from app.models import Project, Report, ReportStatus
-from app.schemas.report_meta import ReportCreateIn, ReportOut
-from app.services.reports import generate_report
+from app.schemas.report_meta import ExecScheduleIn, ReportCreateIn, ReportOut
+from app.services.reports import EXECUTIVE, generate_report
 from app.storage import rustfs
 
 router = APIRouter()
@@ -50,8 +50,12 @@ def create_report(
             "start": body.start.isoformat() if body.start else None,
             "end": body.end.isoformat() if body.end else None,
         }
-    # exactly one sprint -> sprint report; otherwise a broader closing/period review
-    report_type = "sprint" if len(scope.get("sprint_ids", [])) == 1 else "project"
+    if body.report_type == "executive":
+        scope["kind"] = EXECUTIVE
+        report_type = "executive"
+    else:
+        # exactly one sprint -> sprint report; otherwise a broader closing/period review
+        report_type = "sprint" if len(scope.get("sprint_ids", [])) == 1 else "project"
     report = Report(
         project_id=project_id,
         report_type=report_type,
@@ -63,6 +67,14 @@ def create_report(
     db.commit()
     background.add_task(run_in_session, generate_report, report.id)
     return _report_out(report)
+
+
+@router.put("/projects/{project_id}/reports/executive-schedule", status_code=204)
+def set_exec_schedule(project_id: int, body: ExecScheduleIn, db: Session = Depends(get_db)):
+    """Turn the weekly executive report (Mondays, covering the past 7 days) on or off."""
+    project = get_or_404(db, Project, project_id)
+    project.exec_report_weekly = body.weekly
+    db.commit()
 
 
 @router.delete("/reports/{report_id}", status_code=204)

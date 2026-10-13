@@ -27,6 +27,14 @@ storage.
   ahead of it. Health: on track ≥ 70% likely, at risk 30–70%, off track < 30%.
   With fewer than 3 closed sprints it falls back to a single low-confidence
   projection. See `app/services/forecast.py`.
+- **Executive report**: pick "Executive summary" on the Reports tab for a short,
+  outcome-first PDF for product leadership — health and its reasons, what
+  shipped (in business language), the roadmap forecast, risks with mitigations
+  and decisions needed. The prose comes from one call to the project's AI
+  provider (`app/services/exec_report.py`); without it the report still renders
+  from the data. A project can opt in to a weekly one (Mondays 00:30 UTC,
+  covering the past 7 days) — this needs `RUN_SCHEDULER=true`, which the dev
+  compose file turns off.
 - Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start

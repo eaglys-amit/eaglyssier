@@ -83,6 +83,11 @@ class Project(Base, TimestampMixin):
     # Persisted analysis scope for KPI/Evaluation generation (see app.services.scope):
     # {"member_ids": [], "sprint_ids": [], "repo_ids": [], "start_date": null, "end_date": null}
     analysis_scope: Mapped[dict | None] = mapped_column(JSON)
+    # Generate an executive report every Monday covering the past week
+    # (see app.scheduler.generate_weekly_exec_reports).
+    exec_report_weekly: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     integrations: Mapped[list["Integration"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"

@@ -1,0 +1,38 @@
+{# Executive summary for product leadership: where the project stands, what
+   shipped, the roadmap forecast, risks and decisions. Prose comes from one LLM
+   call (app.services.exec_report); every section falls back to data. #}
+{% extends "base.html.j2" %}
+{% block page_title %}{{ ctx.title }}{% endblock %}
+{% block head_extra %}
+<style>
+  .pill.green, .pill.on_track, .pill.complete { background: #e4f5e4; color: #006300; }
+  .pill.amber, .pill.at_risk { background: #fdf0d6; color: #8a5a00; }
+  .pill.red, .pill.off_track, .pill.overdue { background: #fbe3e3; color: #a12020; }
+  .pill.unknown, .pill.planned { background: #ecebe7; color: #52514e; }
+  .headline { font-size: 17px; font-weight: 600; margin: 8px 0 0; }
+  ul.reasons { margin: 8px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; }
+  .source { font-size: 11px; color: var(--muted); margin-top: 18px; }
+  /* Four tiles in one row, in the browser and in WeasyPrint alike. */
+  .kpis { display: flex; gap: 10px; }
+  .kpis .kpi { flex: 1 1 0; min-width: 0; padding: 10px 12px; }
+  .kpis .kpi .val { font-size: 20px; }
+  /* A long roadmap may split across pages rather than leave one blank. */
+  .card.splittable { break-inside: auto; }
+  tr { break-inside: avoid; }
+</style>
+{% endblock %}
+{% block content %}
+  {% include "reports/_report_head.html.j2" %}
+  {% include "sections/exec_headline.html.j2" %}
+  {% include "sections/shipped.html.j2" %}
+  {% include "sections/roadmap_status.html.j2" %}
+  {% include "sections/risks_decisions.html.j2" %}
+  {% set ex = ctx.executive %}
+  <p class="source">
+    {% if ex.narrative %}Headline, delivered work, risks and decisions were drafted by AI
+      {%- if ex.narrative_model %} ({{ ex.narrative_model }}){% endif %} from the figures in this report; review before sharing.
+    {% else %}AI summary unavailable{% if ex.narrative_error %} ({{ ex.narrative_error }}){% endif %}; sections above are generated from project data only.
+    {% endif %}
+    Forecasts simulate recent sprint throughput; P50/P85 are the dates half / 85% of simulated futures finish by.
+  </p>
+{% endblock %}

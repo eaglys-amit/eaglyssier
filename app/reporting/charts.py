@@ -7,6 +7,7 @@ rely on color alone.
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 from html import escape
 
 from app.schemas.report import MemberReport
@@ -140,6 +141,72 @@ def contribution_chart(members: list[MemberReport]) -> str:
     return "".join(parts)
 
 
+_HEALTH_FILL = {
+    "on_track": "#2a78d6",
+    "at_risk": "#eda100",
+    "off_track": "#d03b3b",
+    "overdue": "#d03b3b",
+    "complete": "#1baf7a",
+}
+
+
+def roadmap_chart(milestones: list[dict], today) -> str:
+    """Open milestones on a date axis: target tick, P50–P85 band, health colour.
+
+    Every row also prints its dates and chance as text, so nothing depends on
+    reading the colour or the geometry.
+    """
+    def d(v):
+        return date.fromisoformat(v) if isinstance(v, str) else v
+
+    rows = [m for m in milestones if m.get("health") != "complete"
+            and (m.get("target_date") or m.get("forecast_p50"))][:12]
+    if not rows:
+        return _empty("No open milestones with dates")
+
+    dates = [today]
+    for m in rows:
+        dates += [d(m[k]) for k in ("target_date", "forecast_p50", "forecast_p85") if m.get(k)]
+    lo = min(dates)
+    hi = max(max(dates), lo + timedelta(days=14))
+    span = (hi - lo).days or 1
+
+    width = _PAD_L + _BAR_W_MAX + 170
+    row_h = _ROW_H + 6
+    height = _PAD_T + len(rows) * row_h + 10
+
+    def x(v) -> int:
+        return _PAD_L + int(_BAR_W_MAX * (d(v) - lo).days / span)
+
+    parts = [_svg_open(width, height)]
+    parts.append(_label(_PAD_L, 14, lo.isoformat(), "start", _MUTED, 10))
+    parts.append(_label(_PAD_L + _BAR_W_MAX, 14, hi.isoformat(), "end", _MUTED, 10))
+    tx = x(today)
+    parts.append(f'<line x1="{tx}" y1="24" x2="{tx}" y2="{height - 6}" stroke="{_MUTED}" '
+                 f'stroke-dasharray="3 3"/>')
+    parts.append(_label(tx, 30, "today", "middle", _MUTED, 9))
+    for i, m in enumerate(rows):
+        mid = _PAD_T + i * row_h + row_h / 2
+        fill = _HEALTH_FILL.get(m.get("health"), _BASELINE)
+        parts.append(_label(_PAD_L - 10, mid, _truncate(m["name"], 20), "end", _INK, 12))
+        parts.append(f'<line x1="{_PAD_L}" y1="{mid}" x2="{_PAD_L + _BAR_W_MAX}" y2="{mid}" '
+                     f'stroke="{_BASELINE}" stroke-width="1"/>')
+        if m.get("forecast_p50"):
+            x50 = x(m["forecast_p50"])
+            x85 = x(m.get("forecast_p85") or m["forecast_p50"])
+            parts.append(_bar(x50, int(mid - 6), max(x85 - x50, 3), 12, fill))
+        if m.get("target_date"):
+            xt = x(m["target_date"])
+            parts.append(f'<path d="M{xt} {mid - 7} L{xt + 6} {mid} L{xt} {mid + 7} '
+                         f'L{xt - 6} {mid} Z" fill="{_INK}"/>')
+        chance = m.get("on_time_probability")
+        note = f"{round(chance * 100)}% on time" if chance is not None else (
+            "no forecast" if not m.get("forecast_p50") else "low confidence")
+        parts.append(_label(_PAD_L + _BAR_W_MAX + 10, mid, note, "start", _MUTED, 11))
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def _empty(msg: str) -> str:
     return (
         f'{_svg_open(400, 60)}'
@@ -162,4 +229,6 @@ def build_charts(ctx) -> dict[str, str]:
     }
     if ctx.sprint_breakdown:
         charts["velocity"] = velocity_chart(ctx.sprint_breakdown)
+    if ctx.executive is not None:
+        charts["roadmap"] = roadmap_chart(ctx.executive.milestones, ctx.generated_at.date())
     return charts

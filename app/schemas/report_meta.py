@@ -23,7 +23,14 @@ class ReportOut(ApiModel):
 
 
 class ReportCreateIn(BaseModel):
+    # "executive": the outcome-first summary for product leadership; the scope
+    # below still sets the period its delivery numbers and "what shipped" cover.
+    report_type: Literal["standard", "executive"] = "standard"
     scope_mode: Literal["project", "sprints", "dates"] = "project"
     sprint_ids: list[int] = []
     start: date | None = None
     end: date | None = None
+
+
+class ExecScheduleIn(BaseModel):
+    weekly: bool

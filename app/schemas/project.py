@@ -33,6 +33,7 @@ class ProjectDetail(ApiModel):
     deliverables_error: str | None
     deliverables_model: str | None
     deliverables_generated_at: datetime | None
+    exec_report_weekly: bool = False
     analysis_providers: list[AnalysisProviderOut] = []
     claude_models: list[str] = []
 

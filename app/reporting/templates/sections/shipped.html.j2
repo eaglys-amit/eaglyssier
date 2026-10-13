@@ -1,0 +1,27 @@
+{# Executive report: what shipped — AI bullets, else (whole project only) the
+   recorded deliverables, else the period's finished tasks. #}
+{% set ex = ctx.executive %}
+<section>
+  <h2>What shipped</h2>
+  <div class="card splittable">
+  {% if ex.narrative and ex.narrative.shipped %}
+    <ul class="exec">{% for s in ex.narrative.shipped %}<li>{{ s }}</li>{% endfor %}</ul>
+  {% elif ex.whole_project and ctx.deliverables %}
+    <ul class="exec">
+      {% for d in ctx.deliverables %}
+      <li><strong>{{ d.name }}</strong>{% if d.description %} — {{ d.description }}{% endif %}
+        {% if d.status != 'done' %}<span class="pill {{ d.status }}">{{ d.status|replace('_', ' ') }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  {% elif ex.shipped %}
+    <ul class="exec">
+      {% for t in ex.shipped %}
+      <li>{{ t.title }}{% if t.epic %} <span class="muted">({{ t.epic }})</span>{% endif %}</li>
+      {% endfor %}
+      {% if ex.shipped_more %}<li class="muted">…and {{ ex.shipped_more }} more</li>{% endif %}
+    </ul>
+  {% else %}
+    <p class="muted">Nothing was finished in this period.</p>
+  {% endif %}
+  </div>
+</section>
