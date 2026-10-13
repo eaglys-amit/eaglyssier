@@ -24,6 +24,7 @@ import type { BacklogBoard, Milestone, MilestoneEpicGroup } from "@/types/api";
 
 import { MilestoneProgress } from "./MilestoneProgress";
 import { useMilestones, useMilestoneTasks } from "./useMilestones";
+import { forecastSentence } from "./forecast";
 
 /**
  * Milestone detail, bound to `?milestone=`. Shows the work behind the number.
@@ -69,9 +70,7 @@ export function MilestoneSheet({
               </SheetTitle>
               <SheetDescription>
                 {formatDate(milestone.start_date)} → {formatDate(milestone.target_date)}
-                {milestone.forecast_date
-                  ? ` · forecast ${formatDate(milestone.forecast_date)}`
-                  : ""}
+                {forecastSentence(milestone) ? ` · ${forecastSentence(milestone)}` : ""}
               </SheetDescription>
             </SheetHeader>
 

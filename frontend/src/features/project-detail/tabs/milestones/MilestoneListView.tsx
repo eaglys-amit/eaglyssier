@@ -34,6 +34,7 @@ import { NameEpicsButton } from "./NameEpicsDialog";
 import { MilestoneDialog } from "./MilestoneDialog";
 import { MilestoneProgress } from "./MilestoneProgress";
 import { useMilestones } from "./useMilestones";
+import { forecastSentence, formatChance } from "./forecast";
 
 type SortKey = "name" | "target" | "progress" | "points" | "forecast";
 
@@ -267,8 +268,15 @@ export function MilestoneListView({
 
                   <TableCell className="text-xs">
                     {m.forecast_date ? (
-                      <span className="flex flex-col">
+                      <span className="flex flex-col" title={forecastSentence(m) ?? undefined}>
                         <span>{formatDate(m.forecast_date)}</span>
+                        {m.on_time_probability !== null ? (
+                          <span className="text-[10px] text-muted-foreground">
+                            {formatChance(m.on_time_probability)} on time
+                          </span>
+                        ) : m.confidence === "low" ? (
+                          <span className="text-[10px] text-muted-foreground">low confidence</span>
+                        ) : null}
                         {m.days_late !== null && m.days_late !== 0 ? (
                           <span
                             className={cn(

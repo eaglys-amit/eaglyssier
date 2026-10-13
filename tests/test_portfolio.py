@@ -85,3 +85,10 @@ def test_portfolio_endpoint(as_role, world, db):
     admin_rows = as_role("admin").get("/api/portfolio").json()["projects"]
     assert {p["name"] for p in admin_rows} == {"Alpha", "Beta"}
     assert as_role("outsider").get("/api/portfolio").json()["projects"][0]["name"] == "Beta"
+
+
+def test_health_off_track_milestone_is_red_with_chance():
+    m = _ms("off_track").model_copy(update={"on_time_probability": 0.12})
+    health, reasons = project_health([m], None, None)
+    assert health == "red"
+    assert reasons == ["Milestone “M1” is unlikely to make its target (12% likely on time)"]

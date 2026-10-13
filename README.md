@@ -20,6 +20,13 @@ storage.
   (green/amber/red with the reasons), active sprint progress and scope change,
   velocity trend, next milestone and data freshness. Thresholds are constants at
   the top of `app/services/portfolio.py`.
+- **Roadmap forecast**: each open milestone gets a P50/P85 finish window and the
+  chance of making its target, from a Monte Carlo simulation over the last ≤8
+  closed sprints' throughput (scaled by planned capacity when future sprints have
+  it). Milestones are worked in roadmap order, so each forecast includes the work
+  ahead of it. Health: on track ≥ 70% likely, at risk 30–70%, off track < 30%.
+  With fewer than 3 closed sprints it falls back to a single low-confidence
+  projection. See `app/services/forecast.py`.
 - Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start

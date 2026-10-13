@@ -112,6 +112,8 @@ export function milestoneHealthBadge(health: MilestoneHealth) {
       return <StatusBadge variant="running" label="On track" />;
     case "at_risk":
       return <StatusBadge variant="warning" label="At risk" />;
+    case "off_track":
+      return <StatusBadge variant="failed" label="Off track" />;
     case "overdue":
       return <StatusBadge variant="failed" label="Overdue" />;
     default:

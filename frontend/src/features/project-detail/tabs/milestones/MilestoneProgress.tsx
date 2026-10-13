@@ -13,6 +13,7 @@ const FILL: Record<MilestoneHealth, string> = {
   complete: "bg-success",
   on_track: "bg-primary",
   at_risk: "bg-warning",
+  off_track: "bg-destructive",
   overdue: "bg-destructive",
   unknown: "bg-muted-foreground/50",
 };

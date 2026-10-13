@@ -40,12 +40,18 @@ from app.schemas.milestone import (
 )
 from app.schemas.scrum import VelocityOut
 from app.services import burndown as burndown_svc
+from app.services import forecast as forecast_svc
 from app.services.backlog import task_out
 from app.services import tasks as tasks_svc
+from app.services.capacity import build_project_capacity
 
 # Fallback sprint length when no sprint has both dates. Two weeks is the
 # cadence the rest of the app assumes (see capacity.business_days).
 DEFAULT_SPRINT_DAYS = 14
+# On-time probability bands for health (see _health).
+ON_TRACK_PROBABILITY = 0.7
+AT_RISK_PROBABILITY = 0.3
+_FORECAST_STATES = {"planned", "in_progress"}
 
 VALID_STATES = ("planned", "in_progress", "released", "cancelled")
 
@@ -334,6 +340,7 @@ def _health(
     completed_tasks: int,
     state: str,
     today: date,
+    on_time_probability: float | None = None,
 ) -> str:
     """The badge on the bar. `unknown` wherever the data can't support a claim.
 
@@ -352,6 +359,14 @@ def _health(
     if not total_tasks or total_points <= 0:
         # Nothing linked, or nothing estimated — no basis for a verdict.
         return "unknown"
+    if on_time_probability is not None:
+        # Simulated: judge by how many futures make the date. Checked before
+        # forecast_date, which is None when even the median never finishes.
+        if on_time_probability >= ON_TRACK_PROBABILITY:
+            return "on_track"
+        if on_time_probability >= AT_RISK_PROBABILITY:
+            return "at_risk"
+        return "off_track"
     if forecast_date is None:
         # Estimated work remains but velocity is zero: nothing to project from.
         return "unknown"
@@ -462,6 +477,11 @@ def build_milestone(
         progress=round(progress, 4),
         sprints=sprints,
         forecast_date=forecast_date,
+        # The single projection; build_roadmap replaces these with the
+        # simulated spread whenever there's enough history to resample.
+        forecast_p50=forecast_date,
+        forecast_p85=forecast_date,
+        confidence="low" if forecast_date else None,
         days_late=days_late,
         health=_health(
             target_date=milestone.target_date,
@@ -473,6 +493,83 @@ def build_milestone(
             today=today,
         ),
     )
+
+
+def _simulated_forecasts(
+    db: Session,
+    project_id: int,
+    milestones: list[MilestoneOut],
+    *,
+    velocity: VelocityOut,
+    sprint_days: int,
+    today: date,
+) -> tuple[list[MilestoneOut], int, float]:
+    """Replace the single projection with a Monte Carlo spread where possible.
+
+    Open milestones with work left share the team's throughput in roadmap
+    order, so each one's target is the cumulative remaining points up to and
+    including it. Returns the updated milestones, the number of closed sprints
+    resampled (0 = too little history; milestones keep the low-confidence
+    projection) and the capacity factor applied.
+    """
+    closed = [r for r in velocity.sprints if r.state == "closed"]
+    samples = forecast_svc.usable_samples([r.completed_points for r in closed])
+    if samples is None:
+        return milestones, 0, 1.0
+
+    sampled = closed[-len(samples):]
+    planned = [
+        c.team_capacity for c in build_project_capacity(db, project_id) if c.state == "future"
+    ]
+    factor = forecast_svc.capacity_factor(
+        [r.capacity_points or 0.0 for r in sampled], planned
+    )
+
+    queue = [
+        i for i, m in enumerate(milestones)
+        if m.state in _FORECAST_STATES and m.remaining_points > 0 and m.health != "complete"
+    ]
+    thresholds: list[float] = []
+    ahead = 0.0
+    for i in queue:
+        ahead += milestones[i].remaining_points
+        thresholds.append(ahead)
+    # Seeded by project: reloads and re-renders give the same dates.
+    dists = forecast_svc.simulate(thresholds, samples, factor=factor, seed=project_id)
+
+    def to_date(n: int | None) -> date | None:
+        return today + timedelta(days=n * sprint_days) if n is not None else None
+
+    out = list(milestones)
+    for i, dist in zip(queue, dists):
+        m = out[i]
+        p50 = to_date(dist.percentile(0.5))
+        p85 = to_date(dist.percentile(0.85))
+        probability = None
+        if m.target_date is not None:
+            probability = (
+                dist.probability_within((m.target_date - today).days // sprint_days)
+                if m.target_date >= today else 0.0
+            )
+        out[i] = m.model_copy(update={
+            "forecast_date": p50,
+            "forecast_p50": p50,
+            "forecast_p85": p85,
+            "on_time_probability": probability,
+            "confidence": "high",
+            "days_late": (p50 - m.target_date).days if p50 and m.target_date else None,
+            "health": _health(
+                target_date=m.target_date,
+                forecast_date=p50,
+                total_points=m.total_points,
+                total_tasks=m.total_tasks,
+                completed_tasks=m.completed_tasks,
+                state=m.state,
+                today=today,
+                on_time_probability=probability,
+            ),
+        })
+    return out, len(samples), factor
 
 
 def build_milestones(db: Session, project_id: int) -> list[MilestoneOut]:
@@ -755,6 +852,9 @@ def build_roadmap(
         )
         for m in list_milestones(db, project_id)
     ]
+    milestones, samples, factor = _simulated_forecasts(
+        db, project_id, milestones, velocity=velocity, sprint_days=sprint_days, today=today
+    )
 
     bands = [
         RoadmapSprintBand(
@@ -777,7 +877,7 @@ def build_roadmap(
     for m in milestones:
         if m.start_date:
             starts.append(m.start_date)
-        for candidate in (m.target_date, m.forecast_date):
+        for candidate in (m.target_date, m.forecast_date, m.forecast_p85):
             if candidate:
                 starts.append(candidate)
                 ends.append(candidate)
@@ -793,4 +893,6 @@ def build_roadmap(
         velocity_rolling3=velocity.rolling3,
         velocity_average=velocity.average,
         sprint_length_days=sprint_days,
+        forecast_samples=samples,
+        capacity_factor=factor,
     )

@@ -30,6 +30,8 @@ class PortfolioMilestone(BaseModel):
     name: str
     target_date: date | None
     forecast_date: date | None
+    forecast_p85: date | None = None
+    on_time_probability: float | None = None
     days_late: int | None
     health: str
     progress: float

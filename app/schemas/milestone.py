@@ -103,12 +103,23 @@ class MilestoneOut(ApiModel):
 
     sprints: list[MilestoneSprintRef] = []
 
-    # ---- forecast: from rolling-3 velocity, the Scrums charts' number ----
-    # None when velocity is 0 (nothing to project from) or nothing remains.
+    # ---- forecast: Monte Carlo over recent sprint throughput ----
+    # (app.services.forecast). Milestones earlier in roadmap order consume
+    # throughput first, so these are dates for the work *and everything ahead
+    # of it*. With fewer than 3 closed sprints there is nothing to resample:
+    # confidence is "low" and the single rolling-3 projection fills p50 = p85.
+    # forecast_date mirrors forecast_p50 for older clients.
     forecast_date: date | None = None
+    forecast_p50: date | None = None
+    forecast_p85: date | None = None
+    # Share of simulated futures that finish by target_date (0..1). None
+    # without a target, without a simulation, or once there's nothing left.
+    on_time_probability: float | None = None
+    confidence: str | None = None  # high | low; None when not forecast
     # forecast_date - target_date in days. Negative = ahead of the date.
     days_late: int | None = None
-    # on_track | at_risk | overdue | complete | unknown
+    # on_track (>= 70% likely) | at_risk (30-70%) | off_track (< 30%) |
+    # overdue (target passed) | complete | unknown
     health: str = "unknown"
 
 
@@ -133,6 +144,10 @@ class RoadmapOut(BaseModel):
     velocity_average: float = 0.0
     # Median sprint span, the unit the forecast steps in. 14 when unknowable.
     sprint_length_days: int = 14
+    # Closed sprints the forecast resampled (0 = not enough history, low confidence).
+    forecast_samples: int = 0
+    # Planned vs historical capacity, applied to every draw (1.0 = unadjusted).
+    capacity_factor: float = 1.0
 
 
 # ------------------------------------------------------- generate from sprints
