@@ -1,7 +1,7 @@
 """Shared analysis-scope filtering for KPI and Evaluation generation.
 
 The scope is persisted per member on ProjectMember.analysis_scope (see
-app.schemas.scope) and chosen on the Data tab against the active member. All
+app.schemas.scope) and chosen on the People tab's "Data scope" section. All
 dimensions combine with AND; an empty id set or a null date bound means "no
 constraint from that dimension".
 

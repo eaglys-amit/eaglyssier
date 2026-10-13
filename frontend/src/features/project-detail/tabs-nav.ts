@@ -1,5 +1,4 @@
 import {
-  BarChart3,
   BookText,
   ClipboardList,
   FileCheck2,
@@ -12,7 +11,7 @@ import {
   ScrollText,
   Spade,
   SquareTerminal,
-  Star,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -80,11 +79,14 @@ export const PROJECT_TABS = [
     icon: Package,
     blurb: "What the project has shipped, inferred from completed tasks and repository work.",
   },
+  // Per-person: the data scope a member's KPI and evaluation are generated
+  // from, the KPI itself, and the evaluation sheet (replaces the KPI and
+  // Evaluation tabs; ?section= picks which).
   {
-    key: "kpi",
-    label: "KPI",
-    icon: BarChart3,
-    blurb: "Per-member performance ratings drawn from their tasks and commits.",
+    key: "people",
+    label: "People",
+    icon: Users,
+    blurb: "Each member's data scope, KPI and evaluation sheet, in one place.",
     cap: "people",
   },
   {
@@ -92,13 +94,6 @@ export const PROJECT_TABS = [
     label: "Capacity",
     icon: Gauge,
     blurb: "Sprint capacity and the story-point scale estimates are measured against.",
-  },
-  {
-    key: "evaluation",
-    label: "Evaluation",
-    icon: Star,
-    blurb: "The evaluation sheet for each member, scored and kept with the project.",
-    cap: "people",
   },
   {
     key: "terminal",
