@@ -8,7 +8,7 @@ import {
   IntegrationSyncBar,
   IntegrationSyncStatus,
 } from "@/features/project-detail/tabs/data/IntegrationSync";
-import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
 import type { ProjectIntegrations, Repo } from "@/types/api";

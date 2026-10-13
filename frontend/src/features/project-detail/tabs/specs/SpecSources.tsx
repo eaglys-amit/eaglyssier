@@ -1,9 +1,9 @@
 import { GitBranch, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { formatDateTime } from "@/lib/format";
@@ -78,22 +78,26 @@ export function SpecSources({ projectId }: { projectId: number }) {
   const { data: sources } = useSpecSources(projectId);
   if (!sources?.length) return null;
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Specs in repositories</CardTitle>
-        <CardDescription>
+    // Capped so a long repository list scrolls inside the panel instead of
+    // pushing the specs below it off the screen.
+    <SectionPanel
+      title="Specs in repositories"
+      count={sources.length}
+      flush
+      className="h-auto max-h-80"
+      subtitle={
+        <span className="text-xs text-muted-foreground">
           Reads spec-kit feature folders (<span className="font-mono">specs/001-feature/spec.md</span>,
           plus <span className="font-mono">plan.md</span> and <span className="font-mono">tasks.md</span>)
           from the default branch. Lines in tasks.md are matched to existing tasks; none are created.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        <ul className="divide-y border-t">
-          {sources.map((s) => (
-            <SourceRow key={s.repo_id} projectId={projectId} source={s} />
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+        </span>
+      }
+    >
+      <ul className="divide-y">
+        {sources.map((s) => (
+          <SourceRow key={s.repo_id} projectId={projectId} source={s} />
+        ))}
+      </ul>
+    </SectionPanel>
   );
 }

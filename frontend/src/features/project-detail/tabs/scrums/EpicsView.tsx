@@ -32,7 +32,7 @@ import { qk } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import type { BacklogBoard, Milestone, TaskNode } from "@/types/api";
 
-import { SectionPanel } from "../data/SectionPanel";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { useMilestones } from "../milestones/useMilestones";
 import { TaskDialog } from "./TaskDialog";
 import { TaskTreeView } from "./TaskTreeView";

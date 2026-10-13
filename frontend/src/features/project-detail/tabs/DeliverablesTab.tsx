@@ -4,10 +4,10 @@ import { toast } from "sonner";
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { jobBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -69,18 +69,34 @@ export function DeliverablesTab({ projectId }: { projectId: number }) {
         </>
       }
     >
-      <div className="space-y-4">
-        {data?.status === "failed" && data.error ? <ErrorAlert message={data.error} /> : null}
+      {/* Fits the screen from lg up: the table scrolls inside its panel, like
+          the Data tab's lists. Narrower than that, the page scrolls. */}
+      <div className="flex flex-col gap-4 lg:h-full">
+        {data?.status === "failed" && data.error ? (
+          <div className="shrink-0">
+            <ErrorAlert message={data.error} />
+          </div>
+        ) : null}
 
-        {!data?.items.length ? (
-          <EmptyState
-            icon={Package}
-            title="No deliverables yet"
-            hint="Deliverables are inferred by the LLM from completed tasks and repository summaries. Manual/seeded rows are kept on regeneration."
-          />
-        ) : (
-          <Card>
-            <CardContent className="p-0">
+        <div className="lg:min-h-0 lg:flex-1">
+          <SectionPanel
+            title="Deliverables"
+            count={data?.items.length || undefined}
+            subtitle={
+              <span className="text-xs text-muted-foreground">
+                Inferred from completed tasks and repository summaries. Manual rows are kept when
+                you regenerate.
+              </span>
+            }
+            flush={Boolean(data?.items.length)}
+          >
+            {!data?.items.length ? (
+              <EmptyState
+                icon={Package}
+                title="No deliverables yet"
+                hint="Press Generate deliverables to infer them from the project's completed work."
+              />
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -122,9 +138,9 @@ export function DeliverablesTab({ projectId }: { projectId: number }) {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </SectionPanel>
+        </div>
       </div>
     </TabShell>
   );

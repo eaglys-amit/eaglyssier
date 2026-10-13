@@ -25,7 +25,7 @@ import {
   IntegrationSyncBar,
   IntegrationSyncStatus,
 } from "@/features/project-detail/tabs/data/IntegrationSync";
-import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, taskLabel } from "@/lib/format";
 import { qk } from "@/lib/query-keys";

@@ -41,7 +41,7 @@ import type {
 } from "@/types/api";
 
 import { IntegrationSyncBar } from "../data/IntegrationSync";
-import { SectionPanel } from "../data/SectionPanel";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { CommitmentMeter } from "./CommitmentMeter";
 import { DropColumn } from "./DropColumn";
 import { SprintDialog } from "./SprintDialog";
@@ -61,8 +61,8 @@ import { BACKLOG_DROPPABLE, sprintDroppable, useBoardDnd } from "./useBoardDnd";
  * between the sprint header and its list.
  *
  * Planning is moving work across that divide, so both sides are one surface
- * rather than two views. Reuses the Data tab's SectionPanel so the two tabs
- * read as the same product.
+ * rather than two views. Uses the same SectionPanel as the Data tab so the
+ * two tabs read as the same product.
  */
 export function BoardView({
   projectId,
