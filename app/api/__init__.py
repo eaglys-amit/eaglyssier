@@ -27,6 +27,7 @@ from app.api.routes import (
     reports,
     scope,
     settings,
+    specs,
     sprints,
     sync,
     users,
@@ -68,5 +69,7 @@ for _r in (
     users.router,
     # Every visible project's health on one screen (the VP's landing page).
     portfolio.router,
+    # Specs and their requirements, traced to the tasks that implement them.
+    specs.router,
 ):
     api_router.include_router(_r)

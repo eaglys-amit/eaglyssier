@@ -40,6 +40,8 @@ from app.models import (
     ReferenceFile,
     RepoDoc,
     Report,
+    Requirement,
+    Spec,
     Sprint,
     Task,
     TaskBreakdown,
@@ -66,22 +68,23 @@ class Cap(str, enum.Enum):
     OPS = "ops"                      # sync, commit analysis/linking, repo docs
     DOCS = "docs"                    # reference document uploads and folders
     TERMINAL = "terminal"            # per-project Claude terminal
+    SPEC = "spec"                    # create/edit/approve specs and their requirements
 
 
 # Developers hold PEOPLE only for themselves; see `Access.sees_all_people`.
 ROLE_CAPS: dict[str, frozenset[Cap]] = {
     ProjectRole.vp_product.value: frozenset({
-        Cap.VIEW, Cap.REPORT, Cap.ROADMAP, Cap.POKER_VOTE, Cap.DOCS,
+        Cap.VIEW, Cap.REPORT, Cap.ROADMAP, Cap.POKER_VOTE, Cap.DOCS, Cap.SPEC,
     }),
     ProjectRole.tech_lead.value: frozenset({
         Cap.VIEW, Cap.REPORT, Cap.ROADMAP, Cap.TASK, Cap.PLAN, Cap.POKER_VOTE,
         Cap.POKER_FACILITATE, Cap.PEOPLE, Cap.PEOPLE_MANAGE, Cap.OPS, Cap.DOCS,
-        Cap.TERMINAL,
+        Cap.TERMINAL, Cap.SPEC,
     }),
     ProjectRole.project_manager.value: frozenset({
         Cap.VIEW, Cap.REPORT, Cap.ROADMAP, Cap.TASK, Cap.PLAN, Cap.POKER_VOTE,
         Cap.POKER_FACILITATE, Cap.PEOPLE, Cap.PEOPLE_MANAGE, Cap.MEMBERS, Cap.OPS,
-        Cap.DOCS,
+        Cap.DOCS, Cap.SPEC,
     }),
     ProjectRole.developer.value: frozenset({
         Cap.VIEW, Cap.TASK, Cap.POKER_VOTE, Cap.PEOPLE,
@@ -155,6 +158,11 @@ POLICY: list[tuple[str, Cap]] = [
     ("* /projects/{project_id}/link-commits*", Cap.OPS),
     ("* /repos/*", Cap.OPS),
     ("* /repo-docs/*", Cap.OPS),
+    # --- specs & requirements (linking work to them is ordinary task work) ---
+    ("* /requirements/{requirement_id}/tasks*", Cap.TASK),
+    ("* /requirements/*", Cap.SPEC),
+    ("* /projects/{project_id}/specs", Cap.SPEC),
+    ("* /specs/*", Cap.SPEC),
     # --- reference documents ---
     ("* /references/*", Cap.DOCS),
     ("* /projects/{project_id}/references", Cap.DOCS),
@@ -206,6 +214,11 @@ _RESOLVERS: dict[str, Callable[[Session, int], int | None]] = {
     "round_id": _round_project,
     "commit_id": _via_repo(Commit, "repo_id"),
     "doc_id": _via_repo(RepoDoc, "repo_id"),
+    "spec_id": _direct(Spec),
+    "requirement_id": lambda db, rid: db.execute(
+        select(Spec.project_id).join(Requirement, Requirement.spec_id == Spec.id)
+        .where(Requirement.id == rid)
+    ).scalar(),
 }
 
 

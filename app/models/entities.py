@@ -1115,3 +1115,142 @@ class SprintSnapshot(Base, TimestampMixin):
     )
 
     sprint: Mapped["Sprint"] = relationship(back_populates="snapshots")
+
+
+class Spec(Base, TimestampMixin):
+    """A specification whose requirements are tracked against the work.
+
+    Comes from an uploaded reference document (`source="document"`) or from a
+    spec folder in a repository (`source="repo"`, synced, read-only here).
+    `version` counts applied revisions; see app.services.specs for how a new
+    version is compared with the last.
+    """
+
+    __tablename__ = "specs"
+    __table_args__ = (Index("ix_specs_project_id", "project_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="document")
+    # source="document": the current version's file. SET NULL keeps the spec
+    # (and its requirements) if someone tidies the file away.
+    reference_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reference_files.id", ondelete="SET NULL")
+    )
+    # source="repo": where it lives (filled in by repo sync).
+    repo_id: Mapped[int | None] = mapped_column(ForeignKey("git_repos.id", ondelete="CASCADE"))
+    path: Mapped[str | None] = mapped_column(String(1024))
+    ref: Mapped[str | None] = mapped_column(String(255))
+
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default="draft"
+    )  # draft | approved
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+
+    # Requirement extraction (LLM for documents, parser for repo specs).
+    extract_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    extract_error: Mapped[str | None] = mapped_column(Text)
+    extract_model: Mapped[str | None] = mapped_column(String(128))
+    # A file waiting to become the next version (set by "upload new version",
+    # promoted to reference_file_id once its requirements are applied).
+    pending_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reference_files.id", ondelete="SET NULL")
+    )
+    synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    project: Mapped["Project"] = relationship()
+    reference_file: Mapped["ReferenceFile | None"] = relationship(
+        foreign_keys=[reference_file_id]
+    )
+    requirements: Mapped[list["Requirement"]] = relationship(
+        back_populates="spec", cascade="all, delete-orphan", order_by="Requirement.rank"
+    )
+
+
+class SpecRevision(Base, TimestampMixin):
+    """The text of each applied version, so versions can be compared later."""
+
+    __tablename__ = "spec_revisions"
+    __table_args__ = (UniqueConstraint("spec_id", "version", name="uq_spec_revision"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    spec_id: Mapped[int] = mapped_column(ForeignKey("specs.id", ondelete="CASCADE"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    reference_file_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reference_files.id", ondelete="SET NULL")
+    )
+    # {"added": n, "changed": n, "removed": n} against the previous version.
+    changes: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class Requirement(Base, TimestampMixin):
+    """One requirement of a spec. Its status is derived from linked tasks."""
+
+    __tablename__ = "requirements"
+    __table_args__ = (
+        UniqueConstraint("spec_id", "key", name="uq_requirement_key"),
+        Index("ix_requirements_spec_id", "spec_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    spec_id: Mapped[int] = mapped_column(ForeignKey("specs.id", ondelete="CASCADE"))
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # "document": the spec numbers it (FR-001, 4.2) — stable across versions, so
+    # versions match on it. "generated": we numbered it (R-3) — versions match
+    # on text similarity instead, and the old key is kept.
+    key_origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="generated", server_default="generated"
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    statement: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    kind: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="functional", server_default="functional"
+    )  # functional | non_functional | user_story | constraint
+    priority: Mapped[str | None] = mapped_column(String(16))  # must | should | could
+    # [{"text": str, "verified": bool, "verified_by": str|null, "verified_at": iso|null}]
+    acceptance_criteria: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    source_excerpt: Mapped[str | None] = mapped_column(Text)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Against the previous version: unchanged | added | changed | removed.
+    change_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unchanged", server_default="unchanged"
+    )
+    changed_in_version: Mapped[int | None] = mapped_column(Integer)
+
+    spec: Mapped["Spec"] = relationship(back_populates="requirements")
+    task_links: Mapped[list["RequirementTask"]] = relationship(
+        back_populates="requirement", cascade="all, delete-orphan"
+    )
+
+
+class RequirementTask(Base, TimestampMixin):
+    """A task that implements (part of) a requirement. Many-to-many."""
+
+    __tablename__ = "requirement_tasks"
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "task_id", name="uq_requirement_task"),
+        Index("ix_requirement_tasks_task_id", "task_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    requirement_id: Mapped[int] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE")
+    )
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="manual", server_default="manual"
+    )  # manual | ai | repo | key_match
+    # Set when the requirement changes or is removed after the link was made:
+    # someone should check the task still matches what the spec now says.
+    needs_review: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    requirement: Mapped["Requirement"] = relationship(back_populates="task_links")
+    task: Mapped["Task"] = relationship()

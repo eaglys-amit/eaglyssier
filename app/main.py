@@ -21,6 +21,7 @@ from app.models import (
     EvaluationSheet,
     GitRepo,
     RepoDoc,
+    Spec,
     SyncRun,
     SyncStatus,
     TaskBreakdown,
@@ -174,9 +175,27 @@ def _reconcile_orphaned_syncs() -> None:
         db.close()
 
 
+def _reconcile_orphaned_spec_extractions() -> None:
+    """A spec extraction that was running when the server stopped will never finish."""
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            update(Spec).where(Spec.extract_status == "running")
+            .values(extract_status="failed", extract_error="Interrupted by server restart.")
+        )
+        db.commit()
+        if result.rowcount:
+            logging.getLogger("startup").info("Reset %d spec extraction(s).", result.rowcount)
+    except Exception:  # noqa: BLE001
+        logging.getLogger("startup").warning("Could not reconcile orphaned spec extractions.")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _reconcile_orphaned_syncs()
+    _reconcile_orphaned_spec_extractions()
     db = SessionLocal()
     try:
         bootstrap_admin(db)

@@ -35,6 +35,15 @@ storage.
   from the data. A project can opt in to a weekly one (Mondays 00:30 UTC,
   covering the past 7 days) — this needs `RUN_SCHEDULER=true`, which the dev
   compose file turns off.
+- **Specs** (spec-driven tracking, first slice): track an uploaded document as a
+  spec on the Specs tab. Its requirements (keeping the document's own numbering,
+  e.g. FR-001) are extracted by the project's AI provider, and each one is linked
+  to the tasks that implement it. Its status comes from those tasks: untraced,
+  planned, in progress, implemented. Uploading a revised document compares
+  versions by each requirement's quoted source text, marks it new, changed or
+  removed, and flags affected task links for review. See `app/services/specs.py`
+  and `app/services/spec_diff.py`. Repository specs, automatic linking and
+  verification come in later slices.
 - Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start

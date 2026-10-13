@@ -26,6 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime, shortSha, taskLabel } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
+import { TaskRequirements } from "@/features/project-detail/TaskRequirements";
 import type { Milestone, Task, TaskDetail, TaskNode } from "@/types/api";
 
 /** Slide-over task detail bound to the ?task= search param (works from any tab). */
@@ -133,6 +134,17 @@ export function TaskSheet() {
               ) : (
                 <p className="text-sm text-muted-foreground">No description.</p>
               )}
+
+              {task.acceptance_criteria ? (
+                <div>
+                  <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Acceptance criteria
+                  </div>
+                  <p className="text-sm whitespace-pre-wrap">{task.acceptance_criteria}</p>
+                </div>
+              ) : null}
+
+              <TaskRequirements task={task} />
 
               {task.commits.length ? (
                 <div>

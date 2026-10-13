@@ -1567,3 +1567,100 @@ export interface Portfolio {
   projects: PortfolioProject[];
   generated_at: string;
 }
+
+// -------------------------------------------------------------------- specs
+
+export type RequirementStatus =
+  | "untraced"
+  | "planned"
+  | "in_progress"
+  | "implemented"
+  | "verified"
+  | "removed";
+export type RequirementKind = "functional" | "non_functional" | "user_story" | "constraint";
+export type RequirementPriority = "must" | "should" | "could";
+export type ChangeState = "unchanged" | "added" | "changed" | "removed";
+
+export interface SpecCoverage {
+  total: number;
+  linked: number;
+  implemented: number;
+  verified: number;
+  changed: number;
+  needs_review: number;
+}
+
+export interface AcceptanceCriterion {
+  text: string;
+  verified: boolean;
+  verified_by: string | null;
+  verified_at: string | null;
+}
+
+export interface RequirementLinkedTask {
+  task_id: number;
+  key: string;
+  title: string;
+  status: string | null;
+  status_category: StatusCategory;
+  origin: string;
+  needs_review: boolean;
+}
+
+export interface Requirement {
+  id: number;
+  key: string;
+  /** "document" = the spec's own numbering; "generated" = ours (R-n); "manual" = added here. */
+  key_origin: "document" | "generated" | "manual";
+  title: string;
+  statement: string;
+  kind: RequirementKind;
+  priority: RequirementPriority | null;
+  acceptance_criteria: AcceptanceCriterion[];
+  source_excerpt: string | null;
+  change_state: ChangeState;
+  changed_in_version: number | null;
+  status: RequirementStatus;
+  tasks: RequirementLinkedTask[];
+}
+
+export interface SpecSummary {
+  id: number;
+  title: string;
+  source: "document" | "repo";
+  status: "draft" | "approved";
+  version: number;
+  extract_status: "none" | "running" | "ready" | "failed";
+  extract_error: string | null;
+  extract_model: string | null;
+  reference_file_id: number | null;
+  filename: string | null;
+  has_pending_version: boolean;
+  coverage: SpecCoverage;
+  updated_at: string;
+}
+
+export interface SpecDetail extends SpecSummary {
+  requirements: Requirement[];
+  revisions: { version: number; created_at: string; changes: Record<string, number> }[];
+}
+
+export interface TaskRequirement {
+  requirement_id: number;
+  spec_id: number;
+  spec_title: string;
+  key: string;
+  title: string;
+  status: RequirementStatus;
+  needs_review: boolean;
+  origin: string;
+}
+
+export interface RequirementBrief {
+  id: number;
+  key: string;
+  title: string;
+  spec_id: number;
+  spec_title: string;
+  change_state: ChangeState;
+}

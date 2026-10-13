@@ -5,6 +5,13 @@ export const qk = {
   // Cross-project; outside the ["projects", id] subtree on purpose, though a
   // projects-list invalidation (prefix ["projects"]) doesn't reach it either.
   portfolio: ["portfolio"] as const,
+  // Specs. The list and the project's requirement picker sit under the project
+  // (a sync sweep refreshes them); one spec's detail has its own root so it
+  // can be polled while extraction runs without a project-wide refetch.
+  specs: (id: number) => ["projects", id, "specs"] as const,
+  projectRequirements: (id: number) => ["projects", id, "requirements"] as const,
+  spec: (specId: number) => ["specs", specId] as const,
+  taskRequirements: (taskId: number) => ["tasks", taskId, "requirements"] as const,
   projects: ["projects"] as const,
   project: (id: number) => ["projects", id] as const,
   sprints: (id: number) => ["projects", id, "sprints"] as const,

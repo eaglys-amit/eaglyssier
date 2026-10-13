@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookText,
   ClipboardList,
+  FileCheck2,
   Database,
   FileText,
   Flag,
@@ -39,6 +40,13 @@ export const PROJECT_TABS = [
     label: "Documents",
     icon: FileText,
     blurb: "Specs, notes and exports the work came from, with the text extracted from each.",
+  },
+  // Documents promoted to tracked specs: each requirement traced to its work.
+  {
+    key: "specs",
+    label: "Specs",
+    icon: FileCheck2,
+    blurb: "Requirements from your specs, traced to the tasks and commits that implement them.",
   },
   // The write surface over the same sprints/tasks Data reads, so it sits next to it.
   {

@@ -23,17 +23,18 @@ export type Cap =
   | "ops"
   | "docs"
   | "terminal"
+  | "spec"
   | "admin";
 
 const ROLE_CAPS: Record<ProjectRole, ReadonlySet<Cap>> = {
-  vp_product: new Set(["view", "report", "roadmap", "poker_vote", "docs"]),
+  vp_product: new Set(["view", "report", "roadmap", "poker_vote", "docs", "spec"]),
   tech_lead: new Set([
     "view", "report", "roadmap", "task", "plan", "poker_vote", "poker_facilitate",
-    "people", "people_manage", "ops", "docs", "terminal",
+    "people", "people_manage", "ops", "docs", "terminal", "spec",
   ]),
   project_manager: new Set([
     "view", "report", "roadmap", "task", "plan", "poker_vote", "poker_facilitate",
-    "people", "people_manage", "members", "ops", "docs",
+    "people", "people_manage", "members", "ops", "docs", "spec",
   ]),
   developer: new Set(["view", "task", "poker_vote", "people"]),
 };
