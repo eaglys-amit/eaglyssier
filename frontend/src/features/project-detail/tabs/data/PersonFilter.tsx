@@ -14,6 +14,13 @@ import type { ProjectMembers } from "@/types/api";
 
 const EVERYONE = "all";
 
+function useProjectMembers(projectId: number) {
+  return useQuery({
+    queryKey: qk.projectMembers(projectId),
+    queryFn: () => api.get<ProjectMembers>(`/projects/${projectId}/members`),
+  });
+}
+
 /**
  * Narrows what the Data views show to one person's tasks / commits / PRs.
  * A view filter only — nothing is saved. (What a member's KPI and evaluation
@@ -28,41 +35,49 @@ export function PersonFilter({
   personId: number | null;
   onChange: (id: number | null) => void;
 }) {
-  const { data } = useQuery({
-    queryKey: qk.projectMembers(projectId),
-    queryFn: () => api.get<ProjectMembers>(`/projects/${projectId}/members`),
-  });
-  // Work by an unmapped account is invisible to the filter, so say so.
+  const { data } = useProjectMembers(projectId);
+  return (
+    <Select
+      value={personId != null ? String(personId) : EVERYONE}
+      onValueChange={(v) => onChange(v === EVERYONE ? null : Number(v))}
+    >
+      <SelectTrigger size="sm" className="w-44" aria-label="Show work by">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={EVERYONE}>Everyone</SelectItem>
+        {(data?.members ?? []).map((m) => (
+          <SelectItem key={m.id} value={String(m.id)}>
+            {m.display_name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/**
+ * Work by an unmapped account is invisible to the person filter, so say so —
+ * but only while a person is selected, when it actually hides something.
+ */
+export function UnmappedAccountsHint({
+  projectId,
+  personId,
+}: {
+  projectId: number;
+  personId: number | null;
+}) {
+  const { data } = useProjectMembers(projectId);
   const unmapped =
     data?.identities.reduce((n, p) => n + p.accounts.filter((a) => a.member_id == null).length, 0) ?? 0;
-
+  if (personId == null || unmapped === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select
-        value={personId != null ? String(personId) : EVERYONE}
-        onValueChange={(v) => onChange(v === EVERYONE ? null : Number(v))}
-      >
-        <SelectTrigger size="sm" className="w-48" aria-label="Show work by">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={EVERYONE}>Everyone</SelectItem>
-          {(data?.members ?? []).map((m) => (
-            <SelectItem key={m.id} value={String(m.id)}>
-              {m.display_name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {personId != null && unmapped > 0 ? (
-        <span className="text-xs text-muted-foreground">
-          {unmapped} synced account{unmapped === 1 ? " isn't" : "s aren't"} mapped to a member —{" "}
-          <Link to={`/projects/${projectId}/members`} className="text-primary hover:underline">
-            map them
-          </Link>{" "}
-          so their work shows here.
-        </span>
-      ) : null}
-    </div>
+    <p className="shrink-0 text-xs text-muted-foreground">
+      {unmapped} synced account{unmapped === 1 ? " isn't" : "s aren't"} mapped to a member —{" "}
+      <Link to={`/projects/${projectId}/members`} className="text-primary hover:underline">
+        map them
+      </Link>{" "}
+      so their work shows here.
+    </p>
   );
 }
