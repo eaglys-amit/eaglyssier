@@ -262,7 +262,7 @@ export function ReportsTab({ projectId }: { projectId: number }) {
   });
 
   return (
-    <TabShell tab="reports">
+    <TabShell tab="reports" flat>
       <div className="space-y-6">
         {canReport ? <GenerateReportCard projectId={projectId} /> : null}
 

@@ -316,7 +316,7 @@ def generate_goals(db: Session, project_id: int, member_id: int) -> None:
         if not task_samples:
             raise analyzers.AnalyzerError(
                 "No Jira tasks are assigned to this member within the current "
-                "analysis scope — sync Jira data or widen the scope on the Data tab."
+                "analysis scope — sync Jira data or widen their data scope on the People tab."
             )
         prompt = GOALS_PROMPT.format(
             project=sheet.project.name,
@@ -369,7 +369,7 @@ def generate_results(db: Session, project_id: int, member_id: int) -> None:
             raise analyzers.AnalyzerError(
                 "No completed tasks, commits, or pull requests are attributed to "
                 "this member within the current analysis scope — sync data or "
-                "widen the scope on the Data tab."
+                "widen their data scope on the People tab."
             )
 
         axes = _merged_axes(sheet.axes)

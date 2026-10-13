@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarRange, ChevronDown, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -9,7 +8,6 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge, taskCategoryBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -27,19 +25,19 @@ import {
   IntegrationSyncBar,
   IntegrationSyncStatus,
 } from "@/features/project-detail/tabs/data/IntegrationSync";
-import { SectionPanel } from "@/features/project-detail/tabs/data/SectionPanel";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, taskLabel } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type { AnalysisScope, Sprint, Task } from "@/types/api";
+import type { Sprint, Task } from "@/types/api";
 
 /** Module-level so the prop identity is stable across renders. */
 const JIRA = ["jira"];
 
-/** No active member = no filter; otherwise only tasks assigned to that member. */
-function byMember(tasks: Task[], memberId: number | null): Task[] {
-  if (memberId == null) return tasks;
-  return tasks.filter((t) => t.assignee_member_id === memberId);
+/** No person = no filter; otherwise only tasks assigned to them. */
+function byPerson(tasks: Task[], personId: number | null): Task[] {
+  if (personId == null) return tasks;
+  return tasks.filter((t) => t.assignee_member_id === personId);
 }
 
 function TaskTable({ tasks }: { tasks: Task[] }) {
@@ -86,18 +84,10 @@ function TaskTable({ tasks }: { tasks: Task[] }) {
 
 export function SprintsSection({
   projectId,
-  activeMemberId,
-  scope,
-  onToggleSprint,
-  collapsed,
-  widthAction,
+  personId,
 }: {
   projectId: number;
-  activeMemberId: number | null;
-  scope: AnalysisScope;
-  onToggleSprint: (id: number) => void;
-  collapsed: boolean;
-  widthAction: ReactNode;
+  personId: number | null;
 }) {
   const qc = useQueryClient();
   const { data: sprints } = useQuery({
@@ -139,20 +129,18 @@ export function SprintsSection({
   });
 
   const bySprint = new Map<number | null, Task[]>();
-  for (const t of byMember(tasks ?? [], activeMemberId)) {
+  for (const t of byPerson(tasks ?? [], personId)) {
     const list = bySprint.get(t.sprint_id) ?? [];
     list.push(t);
     bySprint.set(t.sprint_id, list);
   }
   const backlog = bySprint.get(null) ?? [];
-  const memberActive = activeMemberId != null;
+  const filtered = personId != null;
 
   return (
     <SectionPanel
       title="Sprints & tasks"
       count={sprints?.length}
-      collapsed={collapsed}
-      widthAction={widthAction}
       sync={<IntegrationSyncBar projectId={projectId} types={JIRA} />}
       subtitle={<IntegrationSyncStatus projectId={projectId} types={JIRA} />}
       actions={
@@ -183,14 +171,6 @@ export function SprintsSection({
             return (
               <Collapsible key={s.id} className="rounded-lg border bg-card">
                 <div className="flex items-center gap-2 px-4 py-2.5">
-                  {memberActive ? (
-                    <Checkbox
-                      checked={scope.sprint_ids.includes(s.id)}
-                      onCheckedChange={() => onToggleSprint(s.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label={`Include sprint ${s.name} in this member's analysis scope`}
-                    />
-                  ) : null}
                   <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 text-left">
                     <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
                     <span className="truncate text-sm font-medium">{s.name}</span>
@@ -209,7 +189,7 @@ export function SprintsSection({
                       {formatDate(s.start_date)} → {formatDate(s.end_date)}
                     </span>
                     <Badge variant="secondary" className="ml-auto font-mono tabular-nums">
-                      {memberActive ? `${sprintTasks.length}/${s.task_count}` : sprintTasks.length}
+                      {filtered ? `${sprintTasks.length}/${s.task_count}` : sprintTasks.length}
                     </Badge>
                   </CollapsibleTrigger>
                   <ConfirmDialog
@@ -246,11 +226,7 @@ export function SprintsSection({
                 <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-2 text-left">
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
                   <span className="text-sm font-medium">Backlog</span>
-                  <span className="text-xs text-muted-foreground">
-                    {memberActive && scope.sprint_ids.length
-                      ? "tasks without a sprint — excluded from analysis while sprints are selected"
-                      : "tasks without a sprint"}
-                  </span>
+                  <span className="text-xs text-muted-foreground">tasks without a sprint</span>
                   <Badge variant="secondary" className="ml-auto font-mono tabular-nums">
                     {backlog.length}
                   </Badge>

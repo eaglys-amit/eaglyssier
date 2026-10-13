@@ -25,6 +25,7 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatPoints } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { TabShell } from "@/features/project-detail/TabShell";
 import { StoryPointScaleSection } from "@/features/project-detail/tabs/capacity/StoryPointScaleSection";
 import type { SprintCapacity, SprintCapacityIn } from "@/types/api";
@@ -182,41 +183,47 @@ export function CapacityTab({ projectId }: { projectId: number }) {
 
   return (
     <TabShell tab="capacity">
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Left: sprint capacity cards in a scroll area */}
-        <div className="min-w-0">
-          <div className="mb-2">
-            <h2 className="text-sm font-semibold tracking-tight">Sprint capacity</h2>
-            <p className="text-xs text-muted-foreground">
-              Allocated = focus factor × working days. Done = story points of that member's done
-              tasks in the sprint.
-            </p>
-          </div>
-
-          {isPending ? (
-            <TableSkeleton rows={4} />
-          ) : !capacity?.length ? (
-            <EmptyState
-              icon={CalendarRange}
-              title="No sprints"
-              hint="Sync Jira to pull sprints, then set focus factors here."
-            />
-          ) : (
-            <div className="max-h-[calc(100vh-20rem)] space-y-2 overflow-y-auto pr-1">
-              {capacity.map((s) => (
-                <SprintCapacityCard
-                  key={s.sprint_id}
-                  sprint={s}
-                  saving={save.isPending && save.variables?.sprintId === s.sprint_id}
-                  onSave={(body) => save.mutate({ sprintId: s.sprint_id, body })}
-                />
-              ))}
-            </div>
-          )}
+      {/* Fits the screen from lg up, like the Data tab: each column scrolls on
+          its own. Narrower than that they stack and the page scrolls. */}
+      <div className="grid gap-4 lg:h-full lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
+        {/* Left: sprint capacity, a panel whose list scrolls under its header */}
+        <div className="min-w-0 lg:min-h-0">
+          <SectionPanel
+            title="Sprint capacity"
+            count={capacity?.length || undefined}
+            subtitle={
+              <span className="text-xs text-muted-foreground">
+                Allocated = focus factor × working days. Done = story points of that member's
+                done tasks in the sprint.
+              </span>
+            }
+            className="max-lg:h-auto max-lg:max-h-[36rem]"
+          >
+            {isPending ? (
+              <TableSkeleton rows={4} />
+            ) : !capacity?.length ? (
+              <EmptyState
+                icon={CalendarRange}
+                title="No sprints"
+                hint="Sync Jira to pull sprints, then set focus factors here."
+              />
+            ) : (
+              <div className="space-y-2">
+                {capacity.map((s) => (
+                  <SprintCapacityCard
+                    key={s.sprint_id}
+                    sprint={s}
+                    saving={save.isPending && save.variables?.sprintId === s.sprint_id}
+                    onSave={(body) => save.mutate({ sprintId: s.sprint_id, body })}
+                  />
+                ))}
+              </div>
+            )}
+          </SectionPanel>
         </div>
 
-        {/* Right: story-point scale (always expanded) */}
-        <div className="lg:sticky lg:top-4 lg:self-start">
+        {/* Right: story-point scale (always expanded), scrolling on its own */}
+        <div className="min-w-0 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           <StoryPointScaleSection projectId={projectId} />
         </div>
       </div>

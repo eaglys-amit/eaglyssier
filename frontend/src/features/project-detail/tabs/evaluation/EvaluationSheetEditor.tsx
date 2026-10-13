@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { qk } from "@/lib/query-keys";
-import type { AxisCells, EvaluationSheet, EvaluationSummary, Grade } from "@/types/api";
+import type { AxisCells, EvaluationSheet, Grade } from "@/types/api";
 
 import { ChecklistPanel } from "./ChecklistPanel";
 import { AXES, GRADES } from "./constants";
@@ -99,13 +99,9 @@ function GradeSelect({
 export function EvaluationSheetEditor({
   projectId,
   memberId,
-  members,
-  onSelectMember,
 }: {
   projectId: number;
   memberId: number;
-  members: EvaluationSummary[];
-  onSelectMember: (memberId: number) => void;
 }) {
   const qc = useQueryClient();
   const [local, setLocal] = useState<LocalSheet | null>(null);
@@ -200,21 +196,6 @@ export function EvaluationSheetEditor({
           <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="flex items-center gap-2">
               Project Evaluation
-              <Select
-                value={String(memberId)}
-                onValueChange={(v) => onSelectMember(Number(v))}
-              >
-                <SelectTrigger className="h-8 w-[220px] font-normal">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {members.map((m) => (
-                    <SelectItem key={m.member_id} value={String(m.member_id)}>
-                      {m.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
               {sheet.job_model ? (
                 <span className="text-xs font-normal text-muted-foreground">
                   {sheet.job_model}

@@ -1,10 +1,11 @@
-import { ArrowLeft, FileCheck2, Loader2, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { FileCheck2, GitBranch, LayoutList, Loader2, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
+import { SectionPanel } from "@/components/shared/SectionPanel";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TableSkeleton } from "@/components/shared/TableSkeleton";
 import { Badge } from "@/components/ui/badge";
@@ -45,10 +46,14 @@ import { useReferenceFiles } from "@/features/project-detail/tabs/documents/useR
 import { RepoTasksSection, PlanSection } from "./specs/RepoSpecSections";
 import { RequirementDialog, RequirementForm } from "./specs/RequirementDialog";
 import { ReviewQueue } from "./specs/ReviewQueue";
-import { SpecSources } from "./specs/SpecSources";
+import {
+  SpecSourcesDialog,
+  SpecSyncWarnings,
+  useFailingSpecSources,
+} from "./specs/SpecSources";
 import { UntracedWork } from "./specs/UntracedWork";
 import { changeBadge, CoverageBars, requirementStatusBadge } from "./specs/spec-ui";
-import { useSpec, useSpecList, useSpecMutations } from "./specs/useSpecs";
+import { useSpec, useSpecList, useSpecMutations, useSpecReview } from "./specs/useSpecs";
 
 function NewSpecDialog({ projectId, open, onOpenChange, onCreated }: {
   projectId: number;
@@ -140,83 +145,89 @@ function SpecStatusBadges({ spec }: { spec: SpecSummary }) {
   );
 }
 
-function SpecList({ projectId, onOpen }: { projectId: number; onOpen: (id: number) => void }) {
-  const { data: specs, isPending } = useSpecList(projectId);
-  const access = useAccess(projectId);
-  const canEdit = access.can("spec");
-  const { scan } = useSpecMutations(projectId);
-  const [creating, setCreating] = useState(false);
+function SpecRow({ spec: s, selected, onSelect }: {
+  spec: SpecSummary;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const c = s.coverage;
+  const untraced = c.total - c.linked;
+  return (
+    <button type="button" onClick={onSelect}
+            className={cn("block w-full px-3 py-2.5 text-left", selected ? "bg-accent" : "hover:bg-accent/50")}>
+      <div className="truncate text-sm font-medium">{s.title}</div>
+      <div className="mt-1">
+        <SpecStatusBadges spec={s} />
+      </div>
+      {c.total ? (
+        <div className="mt-1.5 text-xs text-muted-foreground">
+          {c.implemented}/{c.total} implemented · {c.verified} verified
+        </div>
+      ) : null}
+      {untraced || c.needs_review ? (
+        <div className="text-xs text-warning">
+          {[untraced ? `${untraced} untraced` : null, c.needs_review ? `${c.needs_review} to review` : null]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      ) : null}
+    </button>
+  );
+}
 
+/** Left panel: the overview entry, then every tracked spec. */
+function SpecListPanel({ projectId, selectedId, onSelect }: {
+  projectId: number;
+  selectedId: number | null;
+  onSelect: (id: number | null) => void;
+}) {
+  const { data: specs, isPending } = useSpecList(projectId);
+  const { data: review = [] } = useSpecReview(projectId);
+  return (
+    <SectionPanel title="Specs" count={specs?.length || undefined} flush
+                  className="max-lg:h-auto max-lg:max-h-[28rem]">
+      <div className="divide-y">
+        <button type="button" onClick={() => onSelect(null)}
+                className={cn("flex w-full items-center gap-2 px-3 py-2.5 text-left",
+                  selectedId === null ? "bg-accent" : "hover:bg-accent/50")}>
+          <LayoutList className="size-4 text-muted-foreground" />
+          <span className="flex-1 text-sm font-medium">Overview</span>
+          {review.length ? (
+            <span className="text-xs text-warning">{review.length} to review</span>
+          ) : null}
+        </button>
+        {isPending ? (
+          <div className="p-3"><TableSkeleton rows={3} /></div>
+        ) : !specs?.length ? (
+          <p className="px-3 py-4 text-sm text-muted-foreground">No specs tracked yet.</p>
+        ) : (
+          specs.map((s) => (
+            <SpecRow key={s.id} spec={s} selected={s.id === selectedId} onSelect={() => onSelect(s.id)} />
+          ))
+        )}
+      </div>
+    </SectionPanel>
+  );
+}
+
+/** Right panel with no spec chosen: the project-wide things that need action. */
+function SpecsOverview({ projectId, onOpenSources }: { projectId: number; onOpenSources: () => void }) {
+  const { data: specs } = useSpecList(projectId);
   return (
     <div className="space-y-4">
-      <ReviewQueue projectId={projectId} />
-      <SpecSources projectId={projectId} />
-      <div className="flex justify-end gap-1.5">
-        {access.can("task") && specs?.length ? (
-          <Button size="sm" variant="outline" disabled={scan.isPending} onClick={() => scan.mutate()}
-                  title="Link tasks whose title, description or acceptance criteria cite a requirement key such as FR-001 (also runs after every Jira sync)">
-            <RefreshCw className="size-3.5" /> {scan.isPending ? "Scanning…" : "Scan tickets for keys"}
-          </Button>
-        ) : null}
-        {canEdit ? (
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus className="size-4" /> Track a spec
-          </Button>
-        ) : null}
-      </div>
-      {isPending ? (
-        <TableSkeleton />
-      ) : !specs?.length ? (
+      {specs && !specs.length ? (
         <EmptyState
           icon={FileCheck2}
           title="No specs tracked yet"
-          hint="Track a PRD or design doc from the Documents tab, or turn on a repository above to read its spec-kit folders — then follow each requirement through to delivered work."
+          hint="Track a PRD or design doc with “Track a spec”, or connect a repository's spec-kit folders under “Sources” — then follow each requirement through to delivered work."
         />
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Spec</TableHead>
-                  <TableHead className="w-24 text-right">Requirements</TableHead>
-                  <TableHead className="w-80">Coverage</TableHead>
-                  <TableHead className="w-40">Attention</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {specs.map((s) => (
-                  <TableRow key={s.id} className="cursor-pointer align-top" onClick={() => onOpen(s.id)}>
-                    <TableCell>
-                      <div className="font-medium">{s.title}</div>
-                      <div className="mt-1">
-                        <SpecStatusBadges spec={s} />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">{s.coverage.total}</TableCell>
-                    <TableCell>
-                      <CoverageBars coverage={s.coverage} compact />
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {s.coverage.total - s.coverage.linked > 0 ? (
-                        <div className="text-warning">{s.coverage.total - s.coverage.linked} untraced</div>
-                      ) : null}
-                      {s.coverage.needs_review ? (
-                        <div className="text-warning">{s.coverage.needs_review} link(s) to review</div>
-                      ) : null}
-                      {s.coverage.changed ? (
-                        <div className="text-muted-foreground">{s.coverage.changed} changed in v{s.version}</div>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      ) : null}
+      <SpecSyncWarnings projectId={projectId} onOpenSources={onOpenSources} />
+      <ReviewQueue projectId={projectId} />
       <UntracedWork projectId={projectId} />
-      <NewSpecDialog projectId={projectId} open={creating} onOpenChange={setCreating} onCreated={onOpen} />
+      {specs?.length ? (
+        <p className="text-xs text-muted-foreground">Pick a spec on the left to see its requirements.</p>
+      ) : null}
     </div>
   );
 }
@@ -230,7 +241,7 @@ const FILTERS: { key: Filter; label: string; test: (r: Requirement) => boolean }
   { key: "review", label: "Needs review", test: (r) => r.tasks.some((t) => t.needs_review) },
 ];
 
-function SpecHeader({ projectId, spec, onBack }: { projectId: number; spec: SpecDetail; onBack: () => void }) {
+function SpecHeader({ projectId, spec, onRemoved }: { projectId: number; spec: SpecDetail; onRemoved: () => void }) {
   const access = useAccess(projectId);
   const canEdit = access.can("spec");
   const m = useSpecMutations(projectId, spec.id);
@@ -240,10 +251,6 @@ function SpecHeader({ projectId, spec, onBack }: { projectId: number; spec: Spec
 
   return (
     <div className="space-y-3">
-      <button type="button" onClick={onBack}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-3.5" /> All specs
-      </button>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold tracking-tight">{spec.title}</h2>
@@ -312,7 +319,7 @@ function SpecHeader({ projectId, spec, onBack }: { projectId: number; spec: Spec
               title={`Stop tracking “${spec.title}”?`}
               description="Its requirements and task links are deleted. The document itself stays in Documents."
               confirmLabel="Stop tracking"
-              onConfirm={() => m.remove.mutate(undefined, { onSuccess: onBack })}
+              onConfirm={() => m.remove.mutate(undefined, { onSuccess: onRemoved })}
             />
           </div>
         ) : null}
@@ -331,7 +338,7 @@ function SpecHeader({ projectId, spec, onBack }: { projectId: number; spec: Spec
   );
 }
 
-function SpecView({ projectId, specId, onBack }: { projectId: number; specId: number; onBack: () => void }) {
+function SpecView({ projectId, specId, onRemoved }: { projectId: number; specId: number; onRemoved: () => void }) {
   const { data: spec, isPending, error } = useSpec(specId);
   const access = useAccess(projectId);
   const m = useSpecMutations(projectId, specId);
@@ -351,7 +358,7 @@ function SpecView({ projectId, specId, onBack }: { projectId: number; specId: nu
 
   return (
     <div className="space-y-4">
-      <SpecHeader projectId={projectId} spec={spec} onBack={onBack} />
+      <SpecHeader projectId={projectId} spec={spec} onRemoved={onRemoved} />
 
       {spec.version ? (
         <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
@@ -493,10 +500,21 @@ function SpecView({ projectId, specId, onBack }: { projectId: number; specId: nu
   );
 }
 
-/** Specs and their requirements, traced to the work that implements them. */
+/**
+ * Specs and their requirements, traced to the work that implements them.
+ * Left: the spec list. Right: the chosen spec, or the overview (review queue,
+ * untraced work, repository sources) when none is chosen. Both scroll on
+ * their own from lg up, like the Data tab.
+ */
 export function SpecsTab({ projectId }: { projectId: number }) {
   const [params, setParams] = useSearchParams();
   const specId = Number(params.get("spec")) || null;
+  const access = useAccess(projectId);
+  const { data: specs } = useSpecList(projectId);
+  const { scan } = useSpecMutations(projectId);
+  const [creating, setCreating] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const failingSources = useFailingSpecSources(projectId);
   const go = (id: number | null) =>
     setParams((p) => {
       const next = new URLSearchParams(p);
@@ -505,13 +523,45 @@ export function SpecsTab({ projectId }: { projectId: number }) {
       return next;
     });
 
+  const actions = (
+    <>
+      {access.can("task") && specs?.length ? (
+        <Button size="sm" variant="outline" disabled={scan.isPending} onClick={() => scan.mutate()}
+                title="Link tasks whose title, description or acceptance criteria cite a requirement key such as FR-001 (also runs after every Jira sync)">
+          <RefreshCw className="size-3.5" /> {scan.isPending ? "Scanning…" : "Scan tickets for keys"}
+        </Button>
+      ) : null}
+      <Button size="sm" variant="outline" onClick={() => setSourcesOpen(true)}
+              title="Repositories whose spec-kit folders are read as specs">
+        <GitBranch className="size-3.5" /> Sources
+        {failingSources ? (
+          <span className="size-2 rounded-full bg-destructive" aria-label={`${failingSources} failing`} />
+        ) : null}
+      </Button>
+      {access.can("spec") ? (
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="size-4" /> Track a spec
+        </Button>
+      ) : null}
+    </>
+  );
+
   return (
-    <TabShell tab="specs">
-      {specId ? (
-        <SpecView projectId={projectId} specId={specId} onBack={() => go(null)} />
-      ) : (
-        <SpecList projectId={projectId} onOpen={(id) => go(id)} />
-      )}
+    <TabShell tab="specs" flat actions={actions}>
+      <div className="grid gap-4 lg:h-full lg:grid-cols-[22rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="min-w-0 lg:min-h-0">
+          <SpecListPanel projectId={projectId} selectedId={specId} onSelect={go} />
+        </div>
+        <div className="min-w-0 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          {specId ? (
+            <SpecView key={specId} projectId={projectId} specId={specId} onRemoved={() => go(null)} />
+          ) : (
+            <SpecsOverview projectId={projectId} onOpenSources={() => setSourcesOpen(true)} />
+          )}
+        </div>
+      </div>
+      <NewSpecDialog projectId={projectId} open={creating} onOpenChange={setCreating} onCreated={go} />
+      <SpecSourcesDialog projectId={projectId} open={sourcesOpen} onOpenChange={setSourcesOpen} />
     </TabShell>
   );
 }

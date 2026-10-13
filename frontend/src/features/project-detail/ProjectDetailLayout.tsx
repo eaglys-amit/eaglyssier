@@ -18,16 +18,17 @@ import { CapacityTab } from "@/features/project-detail/tabs/CapacityTab";
 import { DataTab } from "@/features/project-detail/tabs/DataTab";
 import { DeliverablesTab } from "@/features/project-detail/tabs/DeliverablesTab";
 import { DocumentsTab } from "@/features/project-detail/tabs/DocumentsTab";
-import { EvaluationTab } from "@/features/project-detail/tabs/EvaluationTab";
 import { GanttTab } from "@/features/project-detail/tabs/GanttTab";
-import { KpiTab } from "@/features/project-detail/tabs/KpiTab";
 import { MilestonesTab } from "@/features/project-detail/tabs/MilestonesTab";
+import { PeopleTab } from "@/features/project-detail/tabs/PeopleTab";
 import { RepoDocsTab } from "@/features/project-detail/tabs/RepoDocsTab";
 import { ReportsTab } from "@/features/project-detail/tabs/ReportsTab";
 import { ScrumsTab } from "@/features/project-detail/tabs/ScrumsTab";
 import { SpecsTab } from "@/features/project-detail/tabs/SpecsTab";
 import { SprintPlanningTab } from "@/features/project-detail/tabs/SprintPlanningTab";
 import { TerminalTab } from "@/features/project-detail/tabs/TerminalTab";
+
+const LEGACY_PEOPLE_TABS = ["kpi", "evaluation"] as const;
 
 /**
  * The project's analysis views. The strip of tabs is the first thing in the
@@ -41,8 +42,17 @@ export function ProjectDetailLayout() {
   const location = useLocation();
 
   // Legacy deep links used /projects/3#kpi; map them onto the tab URL scheme.
+  // KPI and Evaluation were tabs of their own before People absorbed them:
+  // /kpi?member=3 lands on that member's KPI section, and #kpi likewise.
   useEffect(() => {
     const hash = location.hash.replace("#", "");
+    const legacy = LEGACY_PEOPLE_TABS.find((t) => t === tabParam || t === hash);
+    if (legacy) {
+      const search = new URLSearchParams(location.search);
+      search.set("section", legacy);
+      navigate(`/projects/${projectId}/people?${search}`, { replace: true });
+      return;
+    }
     const known = isTabKey(hash) || PROJECT_SETTINGS.some((s) => s.key === hash);
     if (hash && known) {
       navigate(`/projects/${projectId}/${hash}${location.search}`, { replace: true });
@@ -110,9 +120,8 @@ export function ProjectDetailLayout() {
         {tab === "gantt" && <GanttTab projectId={projectId} />}
         {tab === "reports" && <ReportsTab projectId={projectId} />}
         {tab === "deliverables" && <DeliverablesTab projectId={projectId} />}
-        {tab === "kpi" && <KpiTab projectId={projectId} />}
         {tab === "capacity" && <CapacityTab projectId={projectId} />}
-        {tab === "evaluation" && <EvaluationTab projectId={projectId} />}
+        {tab === "people" && <PeopleTab projectId={projectId} />}
         </>}
       </div>
     </div>

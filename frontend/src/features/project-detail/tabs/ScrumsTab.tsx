@@ -59,22 +59,26 @@ export function ScrumsTab({ projectId }: { projectId: number }) {
           </Tabs>
         </div>
 
-        {view === "board" ? (
-          <BoardView
-            projectId={projectId}
-            sprintId={sprintId}
-            onSelectSprint={setSprintId}
-            onOpenEpics={() => setView("epics")}
-          />
-        ) : view === "epics" ? (
-          // Whole-project structure, so it takes no sprint — unlike every other
-          // view here, which is scoped by ?sprint=.
-          <EpicsView projectId={projectId} />
-        ) : view === "charts" ? (
-          <ChartsView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
-        ) : (
-          <NotYet view={view} />
-        )}
+        {/* Only the height left under the switcher. Board and Epics fill it and
+            scroll inside their panels; Charts, which doesn't, scrolls here. */}
+        <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          {view === "board" ? (
+            <BoardView
+              projectId={projectId}
+              sprintId={sprintId}
+              onSelectSprint={setSprintId}
+              onOpenEpics={() => setView("epics")}
+            />
+          ) : view === "epics" ? (
+            // Whole-project structure, so it takes no sprint — unlike every other
+            // view here, which is scoped by ?sprint=.
+            <EpicsView projectId={projectId} />
+          ) : view === "charts" ? (
+            <ChartsView projectId={projectId} sprintId={sprintId} onSelectSprint={setSprintId} />
+          ) : (
+            <NotYet view={view} />
+          )}
+        </div>
       </div>
     </TabShell>
   );
