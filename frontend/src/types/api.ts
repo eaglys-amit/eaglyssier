@@ -1131,6 +1131,8 @@ export interface BreakdownNode {
   story_points: number | null;
   priority: string | null;
   rationale: string | null;
+  /** Tracked spec requirements this node implements; linked when it's created. */
+  requirement_keys?: string[];
 }
 
 export interface BreakdownDraft {
@@ -1138,6 +1140,8 @@ export interface BreakdownDraft {
 }
 
 export interface TaskBreakdown {
+  /** Requirements of the tracked specs among its documents (for coverage). */
+  spec_requirements?: { key: string; title: string; spec_title: string }[];
   id: number;
   project_id: number;
   sprint_id: number | null;
@@ -1561,6 +1565,8 @@ export interface PortfolioProject {
   next_milestone: PortfolioMilestone | null;
   last_synced_at: string | null;
   last_sync_failed: boolean;
+  /** Approved specs (drafts if none approved); null when no specs are tracked. */
+  spec_coverage: SpecCoverage | null;
 }
 
 export interface Portfolio {
@@ -1622,6 +1628,30 @@ export interface Requirement {
   changed_in_version: number | null;
   status: RequirementStatus;
   tasks: RequirementLinkedTask[];
+  ai_check: RequirementAiCheck | null;
+  ai_check_status: "none" | "running" | "ready" | "failed";
+  ai_check_error: string | null;
+}
+
+/** The AI's reading of linked work against each criterion. Suggestions only. */
+export interface RequirementAiCheck {
+  criteria: { text: string; verdict: "met" | "partial" | "not_evident"; evidence: string }[];
+  summary: string;
+  /** No criteria existed, so the statement was judged instead. */
+  from_statement: boolean;
+  model: string | null;
+  checked_at: string | null;
+}
+
+export interface UntracedTask {
+  task_id: number;
+  key: string;
+  title: string;
+  status_category: StatusCategory;
+  story_points: number | null;
+  sprint_id: number | null;
+  sprint_name: string;
+  sprint_state: string | null;
 }
 
 export interface SpecSummary {
@@ -1638,11 +1668,50 @@ export interface SpecSummary {
   has_pending_version: boolean;
   coverage: SpecCoverage;
   updated_at: string;
+  /** source="repo" */
+  repo_id: number | null;
+  repo_name: string | null;
+  path: string | null;
+  ref: string | null;
+  /** The folder disappeared from the repo on the last sync; kept, not deleted. */
+  missing_in_repo: boolean;
+}
+
+/** One tasks.md line and the tracker task it matched (match only — never created). */
+export interface RepoTask {
+  key: string;
+  text: string;
+  done: boolean;
+  story: string | null;
+  parallel: boolean;
+  requirement_keys: string[];
+  task_id: number | null;
+  match: "key" | "title" | null;
+  task_key: string | null;
+  task_title: string | null;
+  task_status_category: StatusCategory | null;
+}
+
+export interface SpecSource {
+  repo_id: number;
+  name: string;
+  url: string | null;
+  provider: string;
+  spec_sync_enabled: boolean;
+  spec_path: string;
+  default_branch: string | null;
+  spec_sync_status: "none" | "running" | "ready" | "failed";
+  spec_sync_error: string | null;
+  spec_synced_at: string | null;
+  spec_count: number;
 }
 
 export interface SpecDetail extends SpecSummary {
   requirements: Requirement[];
   revisions: { version: number; created_at: string; changes: Record<string, number> }[];
+  repo_url: string | null;
+  plan_markdown: string | null;
+  repo_tasks: RepoTask[];
 }
 
 export interface TaskRequirement {
@@ -1663,4 +1732,19 @@ export interface RequirementBrief {
   spec_id: number;
   spec_title: string;
   change_state: ChangeState;
+}
+
+export interface SpecReviewItem {
+  requirement_id: number;
+  spec_id: number;
+  spec_title: string;
+  key: string;
+  title: string;
+  statement: string;
+  change_state: ChangeState;
+  changed_in_version: number | null;
+  task_id: number;
+  task_key: string;
+  task_title: string;
+  task_status_category: StatusCategory;
 }

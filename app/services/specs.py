@@ -38,7 +38,9 @@ from app.schemas.spec import (
     SpecDetail,
     SpecRevisionOut,
     SpecSummary,
+    RepoTaskOut,
     RequirementBrief,
+    ReviewItem,
     TaskRequirement,
 )
 from app.services import analyzers
@@ -166,6 +168,7 @@ def _load(db: Session, spec_ids: list[int]) -> list[Spec]:
         .where(Spec.id.in_(spec_ids or [-1]))
         .options(
             selectinload(Spec.reference_file),
+            selectinload(Spec.repo),
             selectinload(Spec.requirements)
             .selectinload(Requirement.task_links)
             .selectinload(RequirementTask.task),
@@ -188,6 +191,11 @@ def _summary(spec: Spec, rows) -> dict:
         has_pending_version=spec.pending_file_id is not None and spec.version > 0,
         coverage=coverage_of(rows),
         updated_at=spec.updated_at,
+        repo_id=spec.repo_id,
+        repo_name=spec.repo.name if spec.repo else None,
+        path=spec.path,
+        ref=spec.ref,
+        missing_in_repo=spec.missing_in_repo,
     )
 
 
@@ -221,6 +229,8 @@ def spec_detail(db: Session, spec_id: int) -> SpecDetail:
                 acceptance_criteria=_criteria(req.acceptance_criteria),
                 source_excerpt=req.source_excerpt, change_state=req.change_state,
                 changed_in_version=req.changed_in_version, status=status,
+                ai_check=req.ai_check if isinstance(req.ai_check, dict) else None,
+                ai_check_status=req.ai_check_status, ai_check_error=req.ai_check_error,
                 tasks=[
                     LinkedTask(
                         task_id=link.task.id, key=tasks_svc.task_label(link.task),
@@ -237,7 +247,41 @@ def spec_detail(db: Session, spec_id: int) -> SpecDetail:
             SpecRevisionOut(version=r.version, created_at=r.created_at, changes=r.changes or {})
             for r in revisions
         ],
+        repo_url=_repo_url(spec),
+        plan_markdown=spec.plan_markdown,
+        repo_tasks=_repo_tasks_out(db, spec),
     )
+
+
+def _repo_url(spec: Spec) -> str | None:
+    """A browser link to the spec folder on its branch, when the host is known."""
+    repo = spec.repo
+    if not (repo and repo.url and spec.path and spec.ref):
+        return None
+    base = repo.url.rstrip("/")
+    sep = "/-/tree/" if repo.provider.value == "gitlab" else "/tree/"
+    return f"{base}{sep}{spec.ref}/{spec.path}"
+
+
+def _repo_tasks_out(db: Session, spec: Spec) -> list[RepoTaskOut]:
+    lines = spec.repo_tasks or []
+    ids = [rt["task_id"] for rt in lines if rt.get("task_id")]
+    tasks = {
+        t.id: t for t in db.execute(select(Task).where(Task.id.in_(ids or [-1]))).scalars()
+    }
+    out = []
+    for rt in lines:
+        task = tasks.get(rt.get("task_id"))
+        out.append(RepoTaskOut(
+            **{k: rt.get(k) for k in ("key", "text", "done", "story", "match")},
+            parallel=bool(rt.get("parallel")),
+            requirement_keys=rt.get("requirement_keys") or [],
+            task_id=task.id if task else None,
+            task_key=tasks_svc.task_label(task) if task else None,
+            task_title=task.title if task else None,
+            task_status_category=task.status_category.value if task else None,
+        ))
+    return out
 
 
 def project_requirements(db: Session, project_id: int) -> list[RequirementBrief]:
@@ -420,6 +464,8 @@ def apply_version(
         if m.changed or was_removed:
             req.change_state = "added" if was_removed else "changed"
             req.changed_in_version = version
+            # An AI check of the old wording says nothing about the new one.
+            req.ai_check, req.ai_check_status = None, "none"
             for link in req.task_links:
                 link.needs_review = True
 
@@ -455,6 +501,14 @@ def apply_version(
     return counts
 
 
+def extract_with_llm(project, document: str) -> tuple[list[spec_diff.Parsed], str | None]:
+    """Requirements from free-form spec text via the project's provider: (parsed, model)."""
+    provider = project.analysis_provider or settings.default_analysis_provider
+    analyzer = analyzers.get_analyzer(provider, config={"model": project.analysis_model})
+    result = analyzer.analyze(_PROMPT.format(document=document))
+    return parse_requirements(result.data), result.model
+
+
 def extract_document_spec(db: Session, spec_id: int) -> None:
     """Background job: read the pending (or current) file and apply it. Never raises."""
     spec = db.get(Spec, spec_id)
@@ -476,19 +530,17 @@ def extract_document_spec(db: Session, spec_id: int) -> None:
             return
 
         document = refs.documents_text(db, [file.id], budget=settings.breakdown_max_prompt_chars)
-        project = spec.project
-        provider = project.analysis_provider or settings.default_analysis_provider
-        analyzer = analyzers.get_analyzer(provider, config={"model": project.analysis_model})
-        result = analyzer.analyze(_PROMPT.format(document=document))
-        parsed = parse_requirements(result.data)
+        parsed, model = extract_with_llm(spec.project, document)
 
         apply_version(db, spec, parsed, text=text, file_id=file.id)
         spec.pending_file_id = None
         spec.extract_status = "ready"
         spec.extract_error = None
-        spec.extract_model = result.model
+        spec.extract_model = model
         spec.synced_at = _now()
         db.commit()
+        # New or renumbered keys may already be cited in tickets.
+        scan_quietly(db, spec.project_id)
     except Exception as exc:  # noqa: BLE001 - failures land on the row
         db.rollback()
         log.warning("Spec %s extraction failed: %s", spec_id, exc)
@@ -588,3 +640,141 @@ def unlink_task(db: Session, req: Requirement, task_id: int) -> None:
 def mark_reviewed(db: Session, req: Requirement, task_id: int) -> None:
     _link_or_404(db, req, task_id).needs_review = False
     db.commit()
+
+
+# ------------------------------------------------- automatic linking (S3)
+
+
+def requirements_for_files(db: Session, file_ids: list[int]) -> list[Requirement]:
+    """Live requirements of the document specs whose current file is one of these."""
+    if not file_ids:
+        return []
+    return list(db.execute(
+        select(Requirement)
+        .join(Spec, Spec.id == Requirement.spec_id)
+        .where(Spec.reference_file_id.in_(file_ids), Requirement.change_state != "removed")
+        .order_by(Spec.title, Requirement.rank, Requirement.id)
+        .options(selectinload(Requirement.spec))
+    ).scalars().all())
+
+
+def link_ai_requirements(
+    db: Session, requirements: list[Requirement], links: list[tuple[int, list[str]]]
+) -> int:
+    """links: (task_id, requirement keys the breakdown tagged it with). No commit."""
+    by_key: dict[str, list[Requirement]] = {}
+    for req in requirements:
+        by_key.setdefault(req.key, []).append(req)
+    made = 0
+    for task_id, keys in links:
+        for key in dict.fromkeys(keys):
+            matches = by_key.get(key, [])
+            if len(matches) != 1:
+                continue  # unknown, or the same key in two specs: don't guess
+            db.add(RequirementTask(requirement_id=matches[0].id, task_id=task_id, origin="ai"))
+            made += 1
+    return made
+
+
+# Keys worth scanning for: the document's or a person's own identifiers that
+# look like identifiers (FR-001, REQ-12), not our generated R-n numbering
+# (nobody writes those in tickets) or bare "US1" / "4.2" (too ambiguous).
+_SCANNABLE = re.compile(r"^[A-Z][A-Z0-9]{0,9}-\d{1,5}$")
+
+
+def scan_task_references(db: Session, project_id: int) -> dict[str, int]:
+    """Link tasks whose title/description/criteria cite a requirement key.
+
+    Only keys that are unique across the project's live requirements are used
+    (spec-kit features all start at FR-001, so a bare FR-001 is ambiguous once
+    there are two). Links made this way ("key_match") are re-derived each run;
+    links of any other origin are left alone. No commit.
+    """
+    reqs = db.execute(
+        select(Requirement.id, Requirement.key)
+        .join(Spec, Spec.id == Requirement.spec_id)
+        .where(
+            Spec.project_id == project_id,
+            Requirement.change_state != "removed",
+            Requirement.key_origin.in_(("document", "manual")),
+        )
+    ).all()
+    ids_by_key: dict[str, list[int]] = {}
+    for rid, key in reqs:
+        if _SCANNABLE.match(key):
+            ids_by_key.setdefault(key, []).append(rid)
+    unique = {k: ids[0] for k, ids in ids_by_key.items() if len(ids) == 1}
+    ambiguous = len(ids_by_key) - len(unique)
+
+    wanted: set[tuple[int, int]] = set()
+    if unique:
+        pattern = re.compile(
+            r"(?<![A-Za-z0-9])(" + "|".join(re.escape(k) for k in sorted(unique, key=len, reverse=True))
+            + r")(?![0-9])",
+            re.IGNORECASE,
+        )
+        for tid, title, desc, ac in db.execute(
+            select(Task.id, Task.title, Task.description, Task.acceptance_criteria)
+            .where(Task.project_id == project_id)
+        ).all():
+            text = " ".join(filter(None, (title, desc, ac)))
+            for key in {m.upper() for m in pattern.findall(text)}:
+                wanted.add((unique[key], tid))
+
+    existing = {
+        (link.requirement_id, link.task_id): link
+        for link in db.execute(
+            select(RequirementTask)
+            .join(Requirement, Requirement.id == RequirementTask.requirement_id)
+            .join(Spec, Spec.id == Requirement.spec_id)
+            .where(Spec.project_id == project_id)
+        ).scalars()
+    }
+    removed = 0
+    for pair, link in existing.items():
+        if link.origin == "key_match" and pair not in wanted:
+            db.delete(link)
+            removed += 1
+    added = 0
+    for rid, tid in wanted - existing.keys():
+        db.add(RequirementTask(requirement_id=rid, task_id=tid, origin="key_match"))
+        added += 1
+    return {"linked": added, "removed": removed, "ambiguous_keys": ambiguous}
+
+
+def scan_quietly(db: Session, project_id: int) -> None:
+    """Scan and commit; for hooks after syncs, where a failure mustn't spread."""
+    try:
+        scan_task_references(db, project_id)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        log.warning("Requirement key scan failed for project %s: %s", project_id, exc)
+
+
+def review_queue(db: Session, project_id: int) -> list[ReviewItem]:
+    """Every link whose requirement changed (or was removed) since it was made."""
+    links = db.execute(
+        select(RequirementTask)
+        .join(Requirement, Requirement.id == RequirementTask.requirement_id)
+        .join(Spec, Spec.id == Requirement.spec_id)
+        .where(Spec.project_id == project_id, RequirementTask.needs_review.is_(True))
+        .options(
+            selectinload(RequirementTask.requirement).selectinload(Requirement.spec),
+            selectinload(RequirementTask.task),
+        )
+    ).scalars().all()
+    items = [
+        ReviewItem(
+            requirement_id=link.requirement.id, spec_id=link.requirement.spec_id,
+            spec_title=link.requirement.spec.title, key=link.requirement.key,
+            title=link.requirement.title, statement=link.requirement.statement,
+            change_state=link.requirement.change_state,
+            changed_in_version=link.requirement.changed_in_version,
+            task_id=link.task.id, task_key=tasks_svc.task_label(link.task),
+            task_title=link.task.title,
+            task_status_category=link.task.status_category.value,
+        )
+        for link in links
+    ]
+    return sorted(items, key=lambda i: (i.spec_title, i.key, i.task_key))

@@ -35,15 +35,47 @@ storage.
   from the data. A project can opt in to a weekly one (Mondays 00:30 UTC,
   covering the past 7 days) — this needs `RUN_SCHEDULER=true`, which the dev
   compose file turns off.
-- **Specs** (spec-driven tracking, first slice): track an uploaded document as a
+- **Specs** (spec-driven tracking): track an uploaded document as a
   spec on the Specs tab. Its requirements (keeping the document's own numbering,
   e.g. FR-001) are extracted by the project's AI provider, and each one is linked
   to the tasks that implement it. Its status comes from those tasks: untraced,
   planned, in progress, implemented. Uploading a revised document compares
   versions by each requirement's quoted source text, marks it new, changed or
   removed, and flags affected task links for review. See `app/services/specs.py`
-  and `app/services/spec_diff.py`. Repository specs, automatic linking and
-  verification come in later slices.
+  and `app/services/spec_diff.py`.
+- **Repository specs** (spec-kit): turn a repository on in the Specs tab's
+  "Specs in repositories" panel and every `specs/<feature>/` folder with a
+  `spec.md` becomes a spec, re-read on each repo sync (`app/services/repo_specs.py`,
+  parser in `app/services/speckit.py`). User stories (`### User Story 1 - …
+  (Priority: P1)`, with their Given/When/Then scenarios) and keyed lines
+  (`**FR-001**`, `NFR-`, `SC-`) become requirements; free-form files fall back to
+  the AI. `tasks.md` lines (`- [ ] T012 [US1] …`) are matched to existing tracker
+  tasks — never created — and linked to the stories and FR keys they name.
+  Unlinked commits whose message names a task id (T012) or requirement key
+  (FR-003) that resolves to exactly one task get linked to it. Repo specs are
+  read-only here; change them in the repository.
+- **Automatic requirement links**:
+  - *AI breakdown* — when a breakdown's documents are tracked specs, the model
+    tags each proposed task with the requirement keys it implements; the draft
+    shows which requirements no node covers, and creating the tasks links them.
+  - *Key scan* — tasks whose title, description or acceptance criteria cite a
+    requirement key (FR-001, REQ-12) are linked. Runs after every Jira sync and
+    spec update, and from "Scan tickets for keys" on the Specs tab. Only keys
+    unique across the project's specs are used.
+  - *Review queue* — the Specs tab lists every link whose requirement changed or
+    was removed since it was made, with "Still fits" / "Unlink".
+- **Verification & coverage** (`app/services/spec_verify.py`):
+  - Tech Leads and PMs tick each acceptance criterion; a requirement whose linked
+    tasks are all done and whose criteria are all ticked is *verified*.
+  - "Check with AI" reads the linked tasks and their commits' analyses and
+    suggests met / partial / not evident per criterion, citing tasks and commit
+    SHAs. It never ticks anything, and is cleared when the requirement changes.
+  - *Untraced work* on the Specs tab lists tasks in the active, upcoming and last
+    closed sprint that implement no requirement.
+  - The Portfolio gains a spec coverage column (implemented / verified), and a
+    project turns amber when task links wait more than 3 days for review after a
+    spec change. The Executive report gains a "Specification coverage" section
+    with per-spec progress and must-have requirements that have no work yet.
 - Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start

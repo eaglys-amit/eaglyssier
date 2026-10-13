@@ -21,6 +21,7 @@ import { useReferenceFiles } from "../documents/useReferenceFiles";
 import {
   acceptedIds,
   countAccepted,
+  coveredKeys,
   removeNode,
   setNode,
   toDraft,
@@ -302,6 +303,13 @@ export function BreakdownPanel({
             </div>
           </div>
 
+          {current?.spec_requirements?.length ? (
+            <RequirementCoverage
+              requirements={current.spec_requirements}
+              covered={coveredKeys(draft)}
+            />
+          ) : null}
+
           <BreakdownTree
             nodes={draft}
             deck={deck}
@@ -315,6 +323,36 @@ export function BreakdownPanel({
               setDirty(true);
             }}
           />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Which tracked requirements the selected nodes cover, so gaps show before creating. */
+function RequirementCoverage({
+  requirements,
+  covered,
+}: {
+  requirements: { key: string; title: string; spec_title: string }[];
+  covered: Set<string>;
+}) {
+  const missing = requirements.filter((r) => !covered.has(r.key));
+  return (
+    <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs">
+      <span className="font-medium">
+        {requirements.length - missing.length} of {requirements.length} tracked requirements covered
+      </span>
+      <span className="text-muted-foreground"> — created tasks are linked to the requirements they're tagged with.</span>
+      {missing.length ? (
+        <div className="mt-1 text-warning">
+          Not covered:{" "}
+          {missing.map((r, i) => (
+            <span key={r.key} title={`${r.spec_title}: ${r.title}`}>
+              {i ? ", " : ""}
+              <span className="font-mono">{r.key}</span>
+            </span>
+          ))}
         </div>
       ) : null}
     </div>

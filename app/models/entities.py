@@ -510,6 +510,22 @@ class GitRepo(Base, TimestampMixin):
     doc_suggest_model: Mapped[str | None] = mapped_column(String(128))
     doc_suggested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Spec-kit feature folders read from the repo (see app.services.repo_specs).
+    # Off until someone connects it on the Specs tab; then every repo sync also
+    # re-reads `spec_path` on the default branch.
+    spec_sync_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    spec_path: Mapped[str] = mapped_column(
+        String(512), nullable=False, default="specs/", server_default="specs/"
+    )
+    default_branch: Mapped[str | None] = mapped_column(String(255))
+    spec_sync_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    spec_sync_error: Mapped[str | None] = mapped_column(Text)
+    spec_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     project: Mapped["Project"] = relationship(back_populates="repos")
     commits: Mapped[list["Commit"]] = relationship(
         back_populates="repo", cascade="all, delete-orphan"
@@ -1161,8 +1177,19 @@ class Spec(Base, TimestampMixin):
         ForeignKey("reference_files.id", ondelete="SET NULL")
     )
     synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # source="repo" extras: plan.md as-is, and tasks.md parsed with each line's
+    # match in the tracker: [{"key": "T012", "text", "done", "story",
+    # "requirement_keys": [...], "task_id": int|null, "match": "key"|"title"|null}].
+    plan_markdown: Mapped[str | None] = mapped_column(Text)
+    repo_tasks: Mapped[list | None] = mapped_column(JSON)
+    # The folder vanished from the repo on the last sync; kept, not deleted, so
+    # the links and history survive a rename or a branch hiccup.
+    missing_in_repo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     project: Mapped["Project"] = relationship()
+    repo: Mapped["GitRepo | None"] = relationship()
     reference_file: Mapped["ReferenceFile | None"] = relationship(
         foreign_keys=[reference_file_id]
     )
@@ -1222,6 +1249,15 @@ class Requirement(Base, TimestampMixin):
         String(16), nullable=False, default="unchanged", server_default="unchanged"
     )
     changed_in_version: Mapped[int | None] = mapped_column(Integer)
+    # AI check of the acceptance criteria against linked work (see
+    # app.services.spec_verify): {"criteria": [{"text", "verdict", "evidence"}],
+    # "summary", "model", "checked_at"}. Suggestions only — a person still
+    # ticks each criterion. Cleared when the requirement changes.
+    ai_check: Mapped[dict | None] = mapped_column(JSON)
+    ai_check_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    ai_check_error: Mapped[str | None] = mapped_column(Text)
 
     spec: Mapped["Spec"] = relationship(back_populates="requirements")
     task_links: Mapped[list["RequirementTask"]] = relationship(

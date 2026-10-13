@@ -16,6 +16,12 @@ from app.schemas.common import ApiModel, JobStatus
 BreakdownLevel = Literal["epic", "task", "subtask"]
 
 
+class BreakdownRequirement(BaseModel):
+    key: str
+    title: str
+    spec_title: str
+
+
 class BreakdownNode(BaseModel):
     """One drafted work item."""
     id: str  # stable within the draft; referenced by children's `parent`
@@ -29,6 +35,8 @@ class BreakdownNode(BaseModel):
     story_points: float | None = None
     priority: str | None = None
     rationale: str | None = None
+    # Keys of tracked spec requirements this node implements (linked on accept).
+    requirement_keys: list[str] = []
 
 
 class BreakdownDraft(BaseModel):
@@ -76,6 +84,9 @@ class TaskBreakdownOut(ApiModel):
     generated_at: datetime | None
     accepted_at: datetime | None
     created_task_ids: list[int] = []
+    # Requirements of the tracked specs among the documents, so the draft can
+    # show which ones no node covers yet.
+    spec_requirements: list[BreakdownRequirement] = []
 
 
 class BreakdownAcceptOut(BaseModel):

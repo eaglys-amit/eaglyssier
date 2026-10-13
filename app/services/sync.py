@@ -28,6 +28,8 @@ from app.models import (
     SyncStatus,
     Task,
 )
+from app.services import repo_specs
+from app.services import specs as specs_svc
 from app.services import tasks as tasks_svc
 from app.services.identity import resolve_identity
 
@@ -128,6 +130,12 @@ def sync_integration(db: Session, integration_id: int) -> SyncRun | None:
     run.finished_at = _now()
     run.stats = stats
     db.commit()
+    if integration.type in (IntegrationType.github, IntegrationType.gitlab):
+        # Records its own failures on each repo; the sync run itself succeeded.
+        repo_specs.sync_enabled_repos(db, integration.project_id, integration.type)
+    elif integration.type == IntegrationType.jira:
+        # Tickets may cite requirement keys (FR-001) in their summary or description.
+        specs_svc.scan_quietly(db, integration.project_id)
     return run
 
 
@@ -213,6 +221,9 @@ def sync_repo(db: Session, repo_id: int) -> None:
         repo.synced_at = _now()
         db.commit()
         log.info("Synced repo %s: %d commits, %d PRs, %d reviews", repo_id, n_commits, n_prs, n_reviews)
+        if repo.spec_sync_enabled and repo_specs.claim(db, repo):
+            # Fresh commits may mention task ids, and spec.md may have moved on.
+            repo_specs.sync_repo_specs(db, repo_id)
     except Exception as exc:  # noqa: BLE001 - record failure on the row
         db.rollback()
         repo = db.get(GitRepo, repo_id)

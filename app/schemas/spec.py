@@ -31,6 +31,22 @@ class AcceptanceCriterion(BaseModel):
     verified_at: datetime | None = None
 
 
+class AiCriterionCheck(BaseModel):
+    text: str
+    verdict: Literal["met", "partial", "not_evident"]
+    evidence: str = ""
+
+
+class AiCheck(BaseModel):
+    """The AI's reading of the linked work against each criterion. Suggestions only."""
+    criteria: list[AiCriterionCheck]
+    summary: str = ""
+    # True when the requirement had no criteria and its statement was judged instead.
+    from_statement: bool = False
+    model: str | None = None
+    checked_at: datetime | None = None
+
+
 class LinkedTask(BaseModel):
     task_id: int
     key: str
@@ -55,12 +71,50 @@ class RequirementOut(BaseModel):
     changed_in_version: int | None
     status: RequirementStatus
     tasks: list[LinkedTask]
+    ai_check: AiCheck | None = None
+    ai_check_status: str = "none"
+    ai_check_error: str | None = None
 
 
 class SpecRevisionOut(BaseModel):
     version: int
     created_at: datetime
     changes: dict
+
+
+class RepoTaskOut(BaseModel):
+    """One tasks.md line and the tracker task it matched (match only)."""
+    key: str
+    text: str
+    done: bool
+    story: str | None = None
+    parallel: bool = False
+    requirement_keys: list[str] = []
+    task_id: int | None = None
+    match: str | None = None  # key | title
+    task_key: str | None = None
+    task_title: str | None = None
+    task_status_category: str | None = None
+
+
+class SpecSource(BaseModel):
+    """A repository that can feed specs, and its spec sync state."""
+    repo_id: int
+    name: str
+    url: str | None
+    provider: str
+    spec_sync_enabled: bool
+    spec_path: str
+    default_branch: str | None
+    spec_sync_status: str
+    spec_sync_error: str | None
+    spec_synced_at: datetime | None
+    spec_count: int
+
+
+class SpecSourceIn(BaseModel):
+    enabled: bool
+    spec_path: str = "specs/"
 
 
 class SpecSummary(BaseModel):
@@ -78,11 +132,20 @@ class SpecSummary(BaseModel):
     has_pending_version: bool
     coverage: Coverage
     updated_at: datetime
+    # source="repo"
+    repo_id: int | None = None
+    repo_name: str | None = None
+    path: str | None = None
+    ref: str | None = None
+    missing_in_repo: bool = False
 
 
 class SpecDetail(SpecSummary):
     requirements: list[RequirementOut]
     revisions: list[SpecRevisionOut]
+    repo_url: str | None = None
+    plan_markdown: str | None = None
+    repo_tasks: list[RepoTaskOut] = []
 
 
 class TaskRequirement(BaseModel):
@@ -105,6 +168,54 @@ class RequirementBrief(BaseModel):
     spec_id: int
     spec_title: str
     change_state: str
+
+
+class ReviewItem(BaseModel):
+    """A task link waiting for someone to confirm the task still fits the requirement."""
+    requirement_id: int
+    spec_id: int
+    spec_title: str
+    key: str
+    title: str
+    statement: str
+    change_state: str
+    changed_in_version: int | None
+    task_id: int
+    task_key: str
+    task_title: str
+    task_status_category: str
+
+
+class ScanResult(BaseModel):
+    linked: int
+    removed: int
+    ambiguous_keys: int
+
+
+class UntracedTask(BaseModel):
+    task_id: int
+    key: str
+    title: str
+    status_category: str
+    story_points: float | None
+    sprint_id: int | None
+    sprint_name: str
+    sprint_state: str | None
+
+
+class SpecCoverageRow(BaseModel):
+    id: int
+    title: str
+    status: str
+    version: int
+    source: str
+    coverage: Coverage
+
+
+class CriterionIn(BaseModel):
+    # The criterion's current text, so a tick can't land on an edited list.
+    text: str
+    verified: bool
 
 
 class SpecCreateIn(BaseModel):

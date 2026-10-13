@@ -42,7 +42,11 @@ import type { Requirement, SpecDetail, SpecSummary } from "@/types/api";
 
 import { TabShell } from "@/features/project-detail/TabShell";
 import { useReferenceFiles } from "@/features/project-detail/tabs/documents/useReferenceFiles";
+import { RepoTasksSection, PlanSection } from "./specs/RepoSpecSections";
 import { RequirementDialog, RequirementForm } from "./specs/RequirementDialog";
+import { ReviewQueue } from "./specs/ReviewQueue";
+import { SpecSources } from "./specs/SpecSources";
+import { UntracedWork } from "./specs/UntracedWork";
 import { changeBadge, CoverageBars, requirementStatusBadge } from "./specs/spec-ui";
 import { useSpec, useSpecList, useSpecMutations } from "./specs/useSpecs";
 
@@ -124,6 +128,9 @@ function SpecStatusBadges({ spec }: { spec: SpecSummary }) {
       />
       {spec.version ? <Badge variant="outline">v{spec.version}</Badge> : null}
       <Badge variant="secondary">{spec.source === "repo" ? "Repository" : "Document"}</Badge>
+      {spec.missing_in_repo ? (
+        <StatusBadge variant="warning" label="No longer in the repository" />
+      ) : null}
       {spec.extract_status === "running" ? (
         <StatusBadge variant="running" label="Reading requirements" spinning />
       ) : spec.extract_status === "failed" ? (
@@ -135,25 +142,35 @@ function SpecStatusBadges({ spec }: { spec: SpecSummary }) {
 
 function SpecList({ projectId, onOpen }: { projectId: number; onOpen: (id: number) => void }) {
   const { data: specs, isPending } = useSpecList(projectId);
-  const canEdit = useAccess(projectId).can("spec");
+  const access = useAccess(projectId);
+  const canEdit = access.can("spec");
+  const { scan } = useSpecMutations(projectId);
   const [creating, setCreating] = useState(false);
 
   return (
     <div className="space-y-4">
-      {canEdit ? (
-        <div className="flex justify-end">
+      <ReviewQueue projectId={projectId} />
+      <SpecSources projectId={projectId} />
+      <div className="flex justify-end gap-1.5">
+        {access.can("task") && specs?.length ? (
+          <Button size="sm" variant="outline" disabled={scan.isPending} onClick={() => scan.mutate()}
+                  title="Link tasks whose title, description or acceptance criteria cite a requirement key such as FR-001 (also runs after every Jira sync)">
+            <RefreshCw className="size-3.5" /> {scan.isPending ? "Scanning…" : "Scan tickets for keys"}
+          </Button>
+        ) : null}
+        {canEdit ? (
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="size-4" /> Track a spec
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       {isPending ? (
         <TableSkeleton />
       ) : !specs?.length ? (
         <EmptyState
           icon={FileCheck2}
           title="No specs tracked yet"
-          hint="Upload a PRD or design doc on the Documents tab, then track it here to follow each requirement through to delivered work."
+          hint="Track a PRD or design doc from the Documents tab, or turn on a repository above to read its spec-kit folders — then follow each requirement through to delivered work."
         />
       ) : (
         <Card>
@@ -198,6 +215,7 @@ function SpecList({ projectId, onOpen }: { projectId: number; onOpen: (id: numbe
           </CardContent>
         </Card>
       )}
+      <UntracedWork projectId={projectId} />
       <NewSpecDialog projectId={projectId} open={creating} onOpenChange={setCreating} onCreated={onOpen} />
     </div>
   );
@@ -213,7 +231,8 @@ const FILTERS: { key: Filter; label: string; test: (r: Requirement) => boolean }
 ];
 
 function SpecHeader({ projectId, spec, onBack }: { projectId: number; spec: SpecDetail; onBack: () => void }) {
-  const canEdit = useAccess(projectId).can("spec");
+  const access = useAccess(projectId);
+  const canEdit = access.can("spec");
   const m = useSpecMutations(projectId, spec.id);
   const fileInput = useRef<HTMLInputElement>(null);
   const isDoc = spec.source === "document";
@@ -230,9 +249,25 @@ function SpecHeader({ projectId, spec, onBack }: { projectId: number; spec: Spec
           <h2 className="text-lg font-semibold tracking-tight">{spec.title}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <SpecStatusBadges spec={spec} />
-            {spec.filename ? <span>{spec.filename}</span> : null}
+            {spec.source === "repo" ? (
+              spec.repo_url ? (
+                <a href={spec.repo_url} target="_blank" rel="noreferrer" className="font-mono hover:underline">
+                  {spec.repo_name}/{spec.path?.split("/").pop()}@{spec.ref}
+                </a>
+              ) : (
+                <span className="font-mono">{spec.repo_name}/{spec.path}</span>
+              )
+            ) : spec.filename ? (
+              <span>{spec.filename}</span>
+            ) : null}
           </div>
         </div>
+        {spec.source === "repo" && spec.repo_id && access.can("ops") ? (
+          <Button size="sm" variant="outline" disabled={m.syncSource.isPending}
+                  onClick={() => m.syncSource.mutate(spec.repo_id!)}>
+            <RefreshCw className="size-3.5" /> Sync from repository
+          </Button>
+        ) : null}
         {canEdit ? (
           <div className="flex flex-wrap gap-1.5">
             {spec.version ? (
@@ -429,6 +464,13 @@ function SpecView({ projectId, specId, onBack }: { projectId: number; specId: nu
       ) : spec.extract_status !== "running" ? (
         <EmptyState icon={FileCheck2} title="No requirements yet"
                     hint={spec.extract_status === "failed" ? "Fix the problem above and retry." : undefined} />
+      ) : null}
+
+      {spec.source === "repo" ? (
+        <>
+          <RepoTasksSection spec={spec} />
+          <PlanSection spec={spec} />
+        </>
       ) : null}
 
       <RequirementDialog projectId={projectId} spec={spec} requirement={open} onClose={() => setOpenId(null)} />

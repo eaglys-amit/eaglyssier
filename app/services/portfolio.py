@@ -34,6 +34,7 @@ from app.schemas.portfolio import (
 from app.schemas.scrum import VelocityOut
 from app.services import burndown as burndown_svc
 from app.services import milestones as milestones_svc
+from app.services import spec_verify
 
 # Health thresholds. Scope change is measured on the active sprint against the
 # commitment it started with; velocity trend is rolling-3 over the average.
@@ -122,6 +123,7 @@ def project_health(
     velocity_trend: float | None,
     last_synced_at: datetime | None = None,
     *,
+    stale_reviews: int = 0,
     now: datetime | None = None,
 ) -> tuple[str, list[str]]:
     """green / amber / red / unknown, plus the reasons it isn't green (worst first)."""
@@ -160,6 +162,12 @@ def project_health(
     if last_synced_at and now - last_synced_at > timedelta(days=STALE_SYNC_DAYS):
         amber.append(f"No successful sync in {(now - last_synced_at).days} days")
 
+    if stale_reviews:
+        amber.append(
+            f"{stale_reviews} task link{'s' if stale_reviews != 1 else ''} not reviewed "
+            f"since the spec changed (over {spec_verify.REVIEW_GRACE_DAYS} days)"
+        )
+
     if red:
         return "red", red + amber
     if amber:
@@ -173,7 +181,10 @@ def build_project_row(db: Session, project: Project, role: str | None) -> Portfo
     sprint = _active_sprint(db, project.id)
     trend = _velocity_trend(velocity)
     last_synced_at, last_failed = _last_sync(db, project.id)
-    health, reasons = project_health(roadmap.milestones, sprint, trend, last_synced_at)
+    coverage, _, stale_reviews = spec_verify.project_coverage(db, project.id)
+    health, reasons = project_health(
+        roadmap.milestones, sprint, trend, last_synced_at, stale_reviews=stale_reviews
+    )
 
     by_health: dict[str, int] = {}
     for m in roadmap.milestones:
@@ -199,6 +210,7 @@ def build_project_row(db: Session, project: Project, role: str | None) -> Portfo
         next_milestone=_next_milestone(roadmap.milestones),
         last_synced_at=last_synced_at,
         last_sync_failed=last_failed,
+        spec_coverage=coverage,
     )
 
 

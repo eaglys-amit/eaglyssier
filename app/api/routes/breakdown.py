@@ -13,9 +13,11 @@ from app.schemas.breakdown import (
     BreakdownAcceptOut,
     BreakdownCreateIn,
     BreakdownDraftIn,
+    BreakdownRequirement,
     TaskBreakdownOut,
 )
 from app.services import breakdown as bd
+from app.services import specs as specs_svc
 from app.services import tasks as tasks_svc
 
 router = APIRouter()
@@ -27,6 +29,10 @@ def _out(db: Session, row: TaskBreakdown) -> TaskBreakdownOut:
         update={
             "reference_filenames": bd.resolve_filenames(db, row.reference_file_ids),
             "parent_task_key": tasks_svc.task_label(parent) if parent else None,
+            "spec_requirements": [
+                BreakdownRequirement(key=r.key, title=r.title, spec_title=r.spec.title)
+                for r in specs_svc.requirements_for_files(db, row.reference_file_ids)
+            ],
         }
     )
 

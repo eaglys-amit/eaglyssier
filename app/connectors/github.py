@@ -77,6 +77,47 @@ class GitHubConnector(GitConnector):
                 break
             page += 1
 
+    # ---- repository files ----
+
+    def default_branch(self, repo: RepoDTO) -> str:
+        with self._client() as c:
+            r = c.get(f"/repos/{repo.name}")
+            if r.status_code >= 400:
+                raise ConnectorError(f"GitHub repo {repo.name} failed: {r.status_code}")
+            return r.json().get("default_branch") or "main"
+
+    def list_files(self, repo: RepoDTO, prefix: str, ref: str) -> list[str]:
+        prefix = prefix.strip("/") + "/"
+        with self._client() as c:
+            # One call for the whole tree; filtered here. GitHub truncates very
+            # large trees (~100k entries) — far beyond a specs/ folder's needs,
+            # but reported rather than silently missing files.
+            r = c.get(f"/repos/{repo.name}/git/trees/{ref}", params={"recursive": "1"})
+            if r.status_code == 404:
+                raise ConnectorError(f"Branch or ref '{ref}' not found in {repo.name}.")
+            if r.status_code >= 400:
+                raise ConnectorError(f"GitHub tree {repo.name}@{ref} failed: {r.status_code}")
+            data = r.json()
+            if data.get("truncated"):
+                raise ConnectorError(f"{repo.name} is too large to list in one call.")
+            return sorted(
+                e["path"] for e in data.get("tree", [])
+                if e.get("type") == "blob" and e.get("path", "").startswith(prefix)
+            )
+
+    def read_file(self, repo: RepoDTO, path: str, ref: str) -> str | None:
+        with self._client() as c:
+            r = c.get(
+                f"/repos/{repo.name}/contents/{path}",
+                params={"ref": ref},
+                headers={"Accept": "application/vnd.github.raw"},
+            )
+            if r.status_code == 404:
+                return None
+            if r.status_code >= 400:
+                raise ConnectorError(f"GitHub file {path} failed: {r.status_code}")
+            return r.content.decode("utf-8", errors="replace")
+
     def discover_repos(self, owner: str | None = None) -> Iterable[RepoRefDTO]:
         owner = (owner or "").strip().strip("/")
         with self._client() as c:

@@ -8,9 +8,12 @@ import type {
   RequirementKind,
   RequirementPriority,
   SpecDetail,
+  SpecReviewItem,
+  SpecSource,
   SpecSummary,
   Task,
   TaskRequirement,
+  UntracedTask,
 } from "@/types/api";
 
 const running = (s?: { extract_status: string }) => s?.extract_status === "running";
@@ -28,7 +31,35 @@ export function useSpec(specId: number | null) {
     queryKey: qk.spec(specId ?? 0),
     queryFn: () => api.get<SpecDetail>(`/specs/${specId}`),
     enabled: specId !== null,
-    refetchInterval: (q) => (running(q.state.data) ? 2000 : false),
+    // Poll while it's being read, or while any requirement's AI check runs.
+    refetchInterval: (q) =>
+      running(q.state.data) ||
+      q.state.data?.requirements.some((r) => r.ai_check_status === "running")
+        ? 2000
+        : false,
+  });
+}
+
+export function useUntraced(projectId: number) {
+  return useQuery({
+    queryKey: qk.specUntraced(projectId),
+    queryFn: () => api.get<UntracedTask[]>(`/projects/${projectId}/specs/untraced`),
+  });
+}
+
+export function useSpecSources(projectId: number) {
+  return useQuery({
+    queryKey: qk.specSources(projectId),
+    queryFn: () => api.get<SpecSource[]>(`/projects/${projectId}/spec-sources`),
+    refetchInterval: (q) =>
+      q.state.data?.some((s) => s.spec_sync_status === "running") ? 2000 : false,
+  });
+}
+
+export function useSpecReview(projectId: number) {
+  return useQuery({
+    queryKey: qk.specReview(projectId),
+    queryFn: () => api.get<SpecReviewItem[]>(`/projects/${projectId}/specs/review`),
   });
 }
 
@@ -71,6 +102,7 @@ export function useSpecMutations(projectId: number, specId?: number | null) {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: qk.specs(projectId) });
     qc.invalidateQueries({ queryKey: qk.projectRequirements(projectId) });
+    qc.invalidateQueries({ queryKey: qk.specSources(projectId) });
     // Every open spec detail and every task sheet's requirement list: a link or
     // an edit shows up in both, and they're cheap to refetch.
     qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "specs" });
@@ -81,6 +113,52 @@ export function useSpecMutations(projectId: number, specId?: number | null) {
   const fail = (fallback: string) => (err: ApiError) => toast.error(err.detail || fallback);
 
   return {
+    setCriterion: useMutation({
+      mutationFn: ({ requirementId, index, text, verified }: {
+        requirementId: number; index: number; text: string; verified: boolean;
+      }) => api.put(`/requirements/${requirementId}/criteria/${index}`, { text, verified }),
+      onSuccess: () => refresh(),
+      onError: fail("Could not update the criterion"),
+    }),
+    aiCheck: useMutation({
+      mutationFn: (requirementId: number) => api.post(`/requirements/${requirementId}/ai-check`),
+      onSuccess: () => {
+        refresh();
+        toast.success("Checking the linked work against the criteria…");
+      },
+      onError: fail("Could not start the check"),
+    }),
+    scan: useMutation({
+      mutationFn: () =>
+        api.post<{ linked: number; removed: number; ambiguous_keys: number }>(
+          `/projects/${projectId}/specs/scan-references`,
+        ),
+      onSuccess: (r) => {
+        refresh();
+        toast.success(
+          `${r.linked} new link${r.linked === 1 ? "" : "s"} from tickets citing requirement keys` +
+            (r.removed ? `, ${r.removed} removed` : "") +
+            (r.ambiguous_keys
+              ? ` · ${r.ambiguous_keys} key(s) skipped as ambiguous (in more than one spec)`
+              : ""),
+        );
+      },
+      onError: fail("Could not scan the tickets"),
+    }),
+    setSource: useMutation({
+      mutationFn: ({ repoId, enabled, specPath }: { repoId: number; enabled: boolean; specPath: string }) =>
+        api.put<SpecSource>(`/repos/${repoId}/spec-source`, { enabled, spec_path: specPath }),
+      onSuccess: (s) => {
+        refresh();
+        toast.success(s.spec_sync_enabled ? `Reading specs from ${s.name}` : `Stopped syncing ${s.name}`);
+      },
+      onError: fail("Could not change the spec source"),
+    }),
+    syncSource: useMutation({
+      mutationFn: (repoId: number) => api.post<SpecSource>(`/repos/${repoId}/specs/sync`),
+      onSuccess: () => refresh(),
+      onError: fail("Could not start the spec sync"),
+    }),
     create: useMutation({
       mutationFn: (body: { reference_file_id: number; title: string | null }) =>
         api.post<SpecDetail>(`/projects/${projectId}/specs`, body),

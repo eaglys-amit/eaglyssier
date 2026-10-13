@@ -69,6 +69,7 @@ class Cap(str, enum.Enum):
     DOCS = "docs"                    # reference document uploads and folders
     TERMINAL = "terminal"            # per-project Claude terminal
     SPEC = "spec"                    # create/edit/approve specs and their requirements
+    VERIFY = "verify"                # tick acceptance criteria verified, run AI checks
 
 
 # Developers hold PEOPLE only for themselves; see `Access.sees_all_people`.
@@ -79,12 +80,12 @@ ROLE_CAPS: dict[str, frozenset[Cap]] = {
     ProjectRole.tech_lead.value: frozenset({
         Cap.VIEW, Cap.REPORT, Cap.ROADMAP, Cap.TASK, Cap.PLAN, Cap.POKER_VOTE,
         Cap.POKER_FACILITATE, Cap.PEOPLE, Cap.PEOPLE_MANAGE, Cap.OPS, Cap.DOCS,
-        Cap.TERMINAL, Cap.SPEC,
+        Cap.TERMINAL, Cap.SPEC, Cap.VERIFY,
     }),
     ProjectRole.project_manager.value: frozenset({
         Cap.VIEW, Cap.REPORT, Cap.ROADMAP, Cap.TASK, Cap.PLAN, Cap.POKER_VOTE,
         Cap.POKER_FACILITATE, Cap.PEOPLE, Cap.PEOPLE_MANAGE, Cap.MEMBERS, Cap.OPS,
-        Cap.DOCS, Cap.SPEC,
+        Cap.DOCS, Cap.SPEC, Cap.VERIFY,
     }),
     ProjectRole.developer.value: frozenset({
         Cap.VIEW, Cap.TASK, Cap.POKER_VOTE, Cap.PEOPLE,
@@ -160,6 +161,9 @@ POLICY: list[tuple[str, Cap]] = [
     ("* /repo-docs/*", Cap.OPS),
     # --- specs & requirements (linking work to them is ordinary task work) ---
     ("* /requirements/{requirement_id}/tasks*", Cap.TASK),
+    ("* /requirements/{requirement_id}/criteria/*", Cap.VERIFY),
+    ("POST /requirements/{requirement_id}/ai-check", Cap.VERIFY),
+    ("POST /projects/{project_id}/specs/scan-references", Cap.TASK),
     ("* /requirements/*", Cap.SPEC),
     ("* /projects/{project_id}/specs", Cap.SPEC),
     ("* /specs/*", Cap.SPEC),
