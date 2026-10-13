@@ -40,6 +40,7 @@ from app.schemas.spec import (
     SpecSummary,
     RepoTaskOut,
     RequirementBrief,
+    ReviewItem,
     TaskRequirement,
 )
 from app.services import analyzers
@@ -534,6 +535,8 @@ def extract_document_spec(db: Session, spec_id: int) -> None:
         spec.extract_model = model
         spec.synced_at = _now()
         db.commit()
+        # New or renumbered keys may already be cited in tickets.
+        scan_quietly(db, spec.project_id)
     except Exception as exc:  # noqa: BLE001 - failures land on the row
         db.rollback()
         log.warning("Spec %s extraction failed: %s", spec_id, exc)
@@ -633,3 +636,141 @@ def unlink_task(db: Session, req: Requirement, task_id: int) -> None:
 def mark_reviewed(db: Session, req: Requirement, task_id: int) -> None:
     _link_or_404(db, req, task_id).needs_review = False
     db.commit()
+
+
+# ------------------------------------------------- automatic linking (S3)
+
+
+def requirements_for_files(db: Session, file_ids: list[int]) -> list[Requirement]:
+    """Live requirements of the document specs whose current file is one of these."""
+    if not file_ids:
+        return []
+    return list(db.execute(
+        select(Requirement)
+        .join(Spec, Spec.id == Requirement.spec_id)
+        .where(Spec.reference_file_id.in_(file_ids), Requirement.change_state != "removed")
+        .order_by(Spec.title, Requirement.rank, Requirement.id)
+        .options(selectinload(Requirement.spec))
+    ).scalars().all())
+
+
+def link_ai_requirements(
+    db: Session, requirements: list[Requirement], links: list[tuple[int, list[str]]]
+) -> int:
+    """links: (task_id, requirement keys the breakdown tagged it with). No commit."""
+    by_key: dict[str, list[Requirement]] = {}
+    for req in requirements:
+        by_key.setdefault(req.key, []).append(req)
+    made = 0
+    for task_id, keys in links:
+        for key in dict.fromkeys(keys):
+            matches = by_key.get(key, [])
+            if len(matches) != 1:
+                continue  # unknown, or the same key in two specs: don't guess
+            db.add(RequirementTask(requirement_id=matches[0].id, task_id=task_id, origin="ai"))
+            made += 1
+    return made
+
+
+# Keys worth scanning for: the document's or a person's own identifiers that
+# look like identifiers (FR-001, REQ-12), not our generated R-n numbering
+# (nobody writes those in tickets) or bare "US1" / "4.2" (too ambiguous).
+_SCANNABLE = re.compile(r"^[A-Z][A-Z0-9]{0,9}-\d{1,5}$")
+
+
+def scan_task_references(db: Session, project_id: int) -> dict[str, int]:
+    """Link tasks whose title/description/criteria cite a requirement key.
+
+    Only keys that are unique across the project's live requirements are used
+    (spec-kit features all start at FR-001, so a bare FR-001 is ambiguous once
+    there are two). Links made this way ("key_match") are re-derived each run;
+    links of any other origin are left alone. No commit.
+    """
+    reqs = db.execute(
+        select(Requirement.id, Requirement.key)
+        .join(Spec, Spec.id == Requirement.spec_id)
+        .where(
+            Spec.project_id == project_id,
+            Requirement.change_state != "removed",
+            Requirement.key_origin.in_(("document", "manual")),
+        )
+    ).all()
+    ids_by_key: dict[str, list[int]] = {}
+    for rid, key in reqs:
+        if _SCANNABLE.match(key):
+            ids_by_key.setdefault(key, []).append(rid)
+    unique = {k: ids[0] for k, ids in ids_by_key.items() if len(ids) == 1}
+    ambiguous = len(ids_by_key) - len(unique)
+
+    wanted: set[tuple[int, int]] = set()
+    if unique:
+        pattern = re.compile(
+            r"(?<![A-Za-z0-9])(" + "|".join(re.escape(k) for k in sorted(unique, key=len, reverse=True))
+            + r")(?![0-9])",
+            re.IGNORECASE,
+        )
+        for tid, title, desc, ac in db.execute(
+            select(Task.id, Task.title, Task.description, Task.acceptance_criteria)
+            .where(Task.project_id == project_id)
+        ).all():
+            text = " ".join(filter(None, (title, desc, ac)))
+            for key in {m.upper() for m in pattern.findall(text)}:
+                wanted.add((unique[key], tid))
+
+    existing = {
+        (link.requirement_id, link.task_id): link
+        for link in db.execute(
+            select(RequirementTask)
+            .join(Requirement, Requirement.id == RequirementTask.requirement_id)
+            .join(Spec, Spec.id == Requirement.spec_id)
+            .where(Spec.project_id == project_id)
+        ).scalars()
+    }
+    removed = 0
+    for pair, link in existing.items():
+        if link.origin == "key_match" and pair not in wanted:
+            db.delete(link)
+            removed += 1
+    added = 0
+    for rid, tid in wanted - existing.keys():
+        db.add(RequirementTask(requirement_id=rid, task_id=tid, origin="key_match"))
+        added += 1
+    return {"linked": added, "removed": removed, "ambiguous_keys": ambiguous}
+
+
+def scan_quietly(db: Session, project_id: int) -> None:
+    """Scan and commit; for hooks after syncs, where a failure mustn't spread."""
+    try:
+        scan_task_references(db, project_id)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        log.warning("Requirement key scan failed for project %s: %s", project_id, exc)
+
+
+def review_queue(db: Session, project_id: int) -> list[ReviewItem]:
+    """Every link whose requirement changed (or was removed) since it was made."""
+    links = db.execute(
+        select(RequirementTask)
+        .join(Requirement, Requirement.id == RequirementTask.requirement_id)
+        .join(Spec, Spec.id == Requirement.spec_id)
+        .where(Spec.project_id == project_id, RequirementTask.needs_review.is_(True))
+        .options(
+            selectinload(RequirementTask.requirement).selectinload(Requirement.spec),
+            selectinload(RequirementTask.task),
+        )
+    ).scalars().all()
+    items = [
+        ReviewItem(
+            requirement_id=link.requirement.id, spec_id=link.requirement.spec_id,
+            spec_title=link.requirement.spec.title, key=link.requirement.key,
+            title=link.requirement.title, statement=link.requirement.statement,
+            change_state=link.requirement.change_state,
+            changed_in_version=link.requirement.changed_in_version,
+            task_id=link.task.id, task_key=tasks_svc.task_label(link.task),
+            task_title=link.task.title,
+            task_status_category=link.task.status_category.value,
+        )
+        for link in links
+    ]
+    return sorted(items, key=lambda i: (i.spec_title, i.key, i.task_key))

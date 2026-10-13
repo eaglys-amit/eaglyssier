@@ -158,3 +158,14 @@ export function isBreakdownNode(value: unknown): value is BreakdownNode {
   const node = value as Record<string, unknown>;
   return typeof node.id === "string" && typeof node.title === "string";
 }
+
+/** Requirement keys tagged on the nodes that will be created (accepted ones). */
+export function coveredKeys(nodes: DraftNode[]): Set<string> {
+  const keys = new Set<string>();
+  const visit = (n: DraftNode) => {
+    if (n.accepted) (n.requirement_keys ?? []).forEach((k) => keys.add(k));
+    n.children.forEach(visit);
+  };
+  nodes.forEach(visit);
+  return keys;
+}

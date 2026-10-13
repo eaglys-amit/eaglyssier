@@ -54,6 +54,16 @@ storage.
   Unlinked commits whose message names a task id (T012) or requirement key
   (FR-003) that resolves to exactly one task get linked to it. Repo specs are
   read-only here; change them in the repository.
+- **Automatic requirement links**:
+  - *AI breakdown* — when a breakdown's documents are tracked specs, the model
+    tags each proposed task with the requirement keys it implements; the draft
+    shows which requirements no node covers, and creating the tasks links them.
+  - *Key scan* — tasks whose title, description or acceptance criteria cite a
+    requirement key (FR-001, REQ-12) are linked. Runs after every Jira sync and
+    spec update, and from "Scan tickets for keys" on the Specs tab. Only keys
+    unique across the project's specs are used.
+  - *Review queue* — the Specs tab lists every link whose requirement changed or
+    was removed since it was made, with "Still fits" / "Unlink".
 - Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start

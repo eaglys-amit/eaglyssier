@@ -276,6 +276,7 @@ def sync_repo_specs(db: Session, repo_id: int) -> None:
         )
         repo.spec_synced_at = _now()
         db.commit()
+        specs_svc.scan_quietly(db, repo.project_id)
         log.info("Repo %s specs: %d feature(s), %d commit(s) linked", repo_id, len(folders), n_commits)
     except Exception as exc:  # noqa: BLE001 - failures land on the row
         db.rollback()

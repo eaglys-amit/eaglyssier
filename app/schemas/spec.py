@@ -151,6 +151,28 @@ class RequirementBrief(BaseModel):
     change_state: str
 
 
+class ReviewItem(BaseModel):
+    """A task link waiting for someone to confirm the task still fits the requirement."""
+    requirement_id: int
+    spec_id: int
+    spec_title: str
+    key: str
+    title: str
+    statement: str
+    change_state: str
+    changed_in_version: int | None
+    task_id: int
+    task_key: str
+    task_title: str
+    task_status_category: str
+
+
+class ScanResult(BaseModel):
+    linked: int
+    removed: int
+    ambiguous_keys: int
+
+
 class SpecCreateIn(BaseModel):
     reference_file_id: int
     title: str | None = None

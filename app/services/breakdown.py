@@ -11,6 +11,7 @@ off-deck estimates and unbounded node counts are all repaired or dropped there.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
@@ -28,6 +29,7 @@ from app.models import (
 from app.services import analyzers
 from app.services import references as refs
 from app.services import scale as scale_svc
+from app.services import specs as specs_svc
 from app.services import tasks as tasks_svc
 
 log = logging.getLogger("app.services.breakdown")
@@ -53,6 +55,9 @@ Extra instructions from the user:
 Reference documents:
 {documents}
 
+Tracked requirements in these documents (key · title · statement):
+{requirements}
+
 Rules:
 - At most three levels: epic -> task -> subtask. Not every branch needs all three.
 - Estimate every LEAF node using ONLY these values: {deck}.
@@ -60,6 +65,9 @@ Rules:
 - Any leaf you would estimate at {breakdown_points} must be split further instead.
 - Ground everything in the documents. Do not invent scope they don't support.
 - Prefer fewer, larger items over a long list of trivia.
+- Tag each node with the keys of the tracked requirements it implements, in
+  requirement_keys (use only keys from the list above; [] if none or if there is
+  no list). Aim for every listed requirement to be covered by some node.
 
 Reply with ONLY a JSON object (no prose, no code fences) of this exact shape:
 {{"nodes": [
@@ -72,7 +80,8 @@ Reply with ONLY a JSON object (no prose, no code fences) of this exact shape:
     "issue_type": "Epic | Story | Task | Sub-task",
     "story_points": 3,
     "priority": "high | medium | low",
-    "rationale": "one sentence on why this estimate"}}
+    "rationale": "one sentence on why this estimate",
+    "requirement_keys": ["FR-001"]}}
 ]}}
 Use null for story_points on any node that has children.
 """
@@ -146,7 +155,11 @@ def generate_breakdown(db: Session, breakdown_id: int) -> None:
 
         sprint = db.get(Sprint, row.sprint_id) if row.sprint_id else None
         parent = db.get(Task, row.parent_task_id) if row.parent_task_id else None
+        requirements = specs_svc.requirements_for_files(db, row.reference_file_ids)
         prompt = _PROMPT.format(
+            requirements="\n".join(
+                f"- {r.key} · {r.title} · {r.statement[:300]}" for r in requirements
+            ) or "(none — leave requirement_keys empty)",
             project=project.name,
             sprint=sprint.name if sprint else "(none — leave them in the backlog)",
             parent=(
@@ -205,6 +218,18 @@ def _scale_lines(db: Session, project_id: int) -> str:
 # -------------------------------------------------------------- normalization
 
 
+def _keys(value) -> list[str]:
+    """Requirement keys as the model gave them, tidied; validated at accept."""
+    if not isinstance(value, list):
+        return []
+    out = []
+    for v in value[:20]:
+        key = re.sub(r"\s+", "", str(v or "")).strip(".:").upper()[:64]
+        if key and key not in out:
+            out.append(key)
+    return out
+
+
 def normalize_nodes(raw: object, deck: list[int]) -> list[dict]:
     """Coerce model (or user) output into a safe, acyclic, deck-aligned tree.
 
@@ -250,6 +275,7 @@ def normalize_nodes(raw: object, deck: list[int]) -> list[dict]:
                 "story_points": _points(item.get("story_points")),
                 "priority": _short(item.get("priority")),
                 "rationale": _text(item.get("rationale")),
+                "requirement_keys": _keys(item.get("requirement_keys")),
             }
         )
 
@@ -350,6 +376,7 @@ def accept_breakdown(
             raise analyzers.AnalyzerError("The target sprint no longer exists.")
 
     created: list[Task] = []
+    tagged: list[tuple[int, list[str]]] = []
     id_map: dict[str, int] = {}
     # Roots first, so a child's parent_id is always already known.
     for node in _topological(nodes, wanted):
@@ -383,7 +410,14 @@ def accept_breakdown(
         db.flush()  # need the id before its children are built
         id_map[node["id"]] = task.id
         created.append(task)
+        if node.get("requirement_keys"):
+            tagged.append((task.id, node["requirement_keys"]))
 
+    # Trace the new work to the spec it came from. Keys the model invented,
+    # or that two specs share, are skipped rather than guessed.
+    specs_svc.link_ai_requirements(
+        db, specs_svc.requirements_for_files(db, breakdown.reference_file_ids), tagged
+    )
     breakdown.created_task_ids = [t.id for t in created]
     breakdown.accepted_at = _now()
     breakdown.status = "accepted"

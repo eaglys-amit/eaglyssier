@@ -8,6 +8,7 @@ import type {
   RequirementKind,
   RequirementPriority,
   SpecDetail,
+  SpecReviewItem,
   SpecSource,
   SpecSummary,
   Task,
@@ -39,6 +40,13 @@ export function useSpecSources(projectId: number) {
     queryFn: () => api.get<SpecSource[]>(`/projects/${projectId}/spec-sources`),
     refetchInterval: (q) =>
       q.state.data?.some((s) => s.spec_sync_status === "running") ? 2000 : false,
+  });
+}
+
+export function useSpecReview(projectId: number) {
+  return useQuery({
+    queryKey: qk.specReview(projectId),
+    queryFn: () => api.get<SpecReviewItem[]>(`/projects/${projectId}/specs/review`),
   });
 }
 
@@ -92,6 +100,23 @@ export function useSpecMutations(projectId: number, specId?: number | null) {
   const fail = (fallback: string) => (err: ApiError) => toast.error(err.detail || fallback);
 
   return {
+    scan: useMutation({
+      mutationFn: () =>
+        api.post<{ linked: number; removed: number; ambiguous_keys: number }>(
+          `/projects/${projectId}/specs/scan-references`,
+        ),
+      onSuccess: (r) => {
+        refresh();
+        toast.success(
+          `${r.linked} new link${r.linked === 1 ? "" : "s"} from tickets citing requirement keys` +
+            (r.removed ? `, ${r.removed} removed` : "") +
+            (r.ambiguous_keys
+              ? ` · ${r.ambiguous_keys} key(s) skipped as ambiguous (in more than one spec)`
+              : ""),
+        );
+      },
+      onError: fail("Could not scan the tickets"),
+    }),
     setSource: useMutation({
       mutationFn: ({ repoId, enabled, specPath }: { repoId: number; enabled: boolean; specPath: string }) =>
         api.put<SpecSource>(`/repos/${repoId}/spec-source`, { enabled, spec_path: specPath }),

@@ -145,6 +145,15 @@ function BreakdownNodeRow({
                 the scale says to split this
               </span>
             ) : null}
+            {node.requirement_keys?.length ? (
+              <span className="inline-flex flex-wrap gap-1" title="Spec requirements this implements">
+                {node.requirement_keys.map((k) => (
+                  <span key={k} className="rounded border px-1 font-mono text-[10px] text-muted-foreground">
+                    {k}
+                  </span>
+                ))}
+              </span>
+            ) : null}
             {node.description ? (
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                 {node.description}

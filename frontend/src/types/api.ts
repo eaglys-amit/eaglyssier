@@ -1131,6 +1131,8 @@ export interface BreakdownNode {
   story_points: number | null;
   priority: string | null;
   rationale: string | null;
+  /** Tracked spec requirements this node implements; linked when it's created. */
+  requirement_keys?: string[];
 }
 
 export interface BreakdownDraft {
@@ -1138,6 +1140,8 @@ export interface BreakdownDraft {
 }
 
 export interface TaskBreakdown {
+  /** Requirements of the tracked specs among its documents (for coverage). */
+  spec_requirements?: { key: string; title: string; spec_title: string }[];
   id: number;
   project_id: number;
   sprint_id: number | null;
@@ -1702,4 +1706,19 @@ export interface RequirementBrief {
   spec_id: number;
   spec_title: string;
   change_state: ChangeState;
+}
+
+export interface SpecReviewItem {
+  requirement_id: number;
+  spec_id: number;
+  spec_title: string;
+  key: string;
+  title: string;
+  statement: string;
+  change_state: ChangeState;
+  changed_in_version: number | null;
+  task_id: number;
+  task_key: string;
+  task_title: string;
+  task_status_category: StatusCategory;
 }

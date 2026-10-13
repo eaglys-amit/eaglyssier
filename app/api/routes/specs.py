@@ -15,6 +15,8 @@ from app.schemas.spec import (
     RequirementIn,
     RequirementLinkIn,
     RequirementPatchIn,
+    ReviewItem,
+    ScanResult,
     SpecCreateIn,
     SpecDetail,
     SpecPatchIn,
@@ -47,6 +49,22 @@ def list_requirements(project_id: int, db: Session = Depends(get_db)):
     """Every live requirement in the project, for pickers."""
     get_or_404(db, Project, project_id)
     return specs_svc.project_requirements(db, project_id)
+
+
+@router.get("/projects/{project_id}/specs/review", response_model=list[ReviewItem])
+def review_queue(project_id: int, db: Session = Depends(get_db)):
+    """Task links whose requirement changed since they were made."""
+    get_or_404(db, Project, project_id)
+    return specs_svc.review_queue(db, project_id)
+
+
+@router.post("/projects/{project_id}/specs/scan-references", response_model=ScanResult)
+def scan_references(project_id: int, db: Session = Depends(get_db)):
+    """Link tasks that cite a requirement key (FR-001) in their text."""
+    get_or_404(db, Project, project_id)
+    result = specs_svc.scan_task_references(db, project_id)
+    db.commit()
+    return result
 
 
 @router.post("/projects/{project_id}/specs", response_model=SpecDetail, status_code=202)

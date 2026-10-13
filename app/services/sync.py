@@ -29,6 +29,7 @@ from app.models import (
     Task,
 )
 from app.services import repo_specs
+from app.services import specs as specs_svc
 from app.services import tasks as tasks_svc
 from app.services.identity import resolve_identity
 
@@ -132,6 +133,9 @@ def sync_integration(db: Session, integration_id: int) -> SyncRun | None:
     if integration.type in (IntegrationType.github, IntegrationType.gitlab):
         # Records its own failures on each repo; the sync run itself succeeded.
         repo_specs.sync_enabled_repos(db, integration.project_id, integration.type)
+    elif integration.type == IntegrationType.jira:
+        # Tickets may cite requirement keys (FR-001) in their summary or description.
+        specs_svc.scan_quietly(db, integration.project_id)
     return run
 
 

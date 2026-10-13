@@ -11,6 +11,7 @@ export const qk = {
   specs: (id: number) => ["projects", id, "specs"] as const,
   projectRequirements: (id: number) => ["projects", id, "requirements"] as const,
   specSources: (id: number) => ["projects", id, "spec-sources"] as const,
+  specReview: (id: number) => ["projects", id, "specs", "review"] as const,
   spec: (specId: number) => ["specs", specId] as const,
   taskRequirements: (taskId: number) => ["tasks", taskId, "requirements"] as const,
   projects: ["projects"] as const,

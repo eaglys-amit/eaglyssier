@@ -160,6 +160,7 @@ POLICY: list[tuple[str, Cap]] = [
     ("* /repo-docs/*", Cap.OPS),
     # --- specs & requirements (linking work to them is ordinary task work) ---
     ("* /requirements/{requirement_id}/tasks*", Cap.TASK),
+    ("POST /projects/{project_id}/specs/scan-references", Cap.TASK),
     ("* /requirements/*", Cap.SPEC),
     ("* /projects/{project_id}/specs", Cap.SPEC),
     ("* /specs/*", Cap.SPEC),

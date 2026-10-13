@@ -44,6 +44,7 @@ import { TabShell } from "@/features/project-detail/TabShell";
 import { useReferenceFiles } from "@/features/project-detail/tabs/documents/useReferenceFiles";
 import { RepoTasksSection, PlanSection } from "./specs/RepoSpecSections";
 import { RequirementDialog, RequirementForm } from "./specs/RequirementDialog";
+import { ReviewQueue } from "./specs/ReviewQueue";
 import { SpecSources } from "./specs/SpecSources";
 import { changeBadge, CoverageBars, requirementStatusBadge } from "./specs/spec-ui";
 import { useSpec, useSpecList, useSpecMutations } from "./specs/useSpecs";
@@ -140,19 +141,28 @@ function SpecStatusBadges({ spec }: { spec: SpecSummary }) {
 
 function SpecList({ projectId, onOpen }: { projectId: number; onOpen: (id: number) => void }) {
   const { data: specs, isPending } = useSpecList(projectId);
-  const canEdit = useAccess(projectId).can("spec");
+  const access = useAccess(projectId);
+  const canEdit = access.can("spec");
+  const { scan } = useSpecMutations(projectId);
   const [creating, setCreating] = useState(false);
 
   return (
     <div className="space-y-4">
+      <ReviewQueue projectId={projectId} />
       <SpecSources projectId={projectId} />
-      {canEdit ? (
-        <div className="flex justify-end">
+      <div className="flex justify-end gap-1.5">
+        {access.can("task") && specs?.length ? (
+          <Button size="sm" variant="outline" disabled={scan.isPending} onClick={() => scan.mutate()}
+                  title="Link tasks whose title, description or acceptance criteria cite a requirement key such as FR-001 (also runs after every Jira sync)">
+            <RefreshCw className="size-3.5" /> {scan.isPending ? "Scanning…" : "Scan tickets for keys"}
+          </Button>
+        ) : null}
+        {canEdit ? (
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="size-4" /> Track a spec
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       {isPending ? (
         <TableSkeleton />
       ) : !specs?.length ? (
