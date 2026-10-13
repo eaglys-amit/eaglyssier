@@ -43,7 +43,7 @@ export function KpiDetailCard({ kpi }: { kpi: Kpi }) {
       <EmptyState
         icon={Gauge}
         title="No KPI yet"
-        hint={`Select ${kpi.display_name} on the left and press Generate.`}
+        hint={`Nothing generated for ${kpi.display_name} yet — press Generate KPI above.`}
       />
     );
   }
@@ -138,10 +138,14 @@ export function KpiDetailCard({ kpi }: { kpi: Kpi }) {
   );
 }
 
-/** One member's KPI, with a generate button for them alone. */
-export function KpiPanel({ projectId, kpi, canGenerate, scopeSummary }: {
+/**
+ * One member's KPI — the only place KPIs are generated: for this member, or
+ * (tech leads / project managers) for everyone at once.
+ */
+export function KpiPanel({ projectId, kpi, allMemberIds, canGenerate, scopeSummary }: {
   projectId: number;
-  kpi: Kpi | null;
+  kpi: Kpi;
+  allMemberIds: number[];
   canGenerate: boolean;
   scopeSummary: ReactNode;
 }) {
@@ -149,23 +153,32 @@ export function KpiPanel({ projectId, kpi, canGenerate, scopeSummary }: {
   const generate = useMutation({
     mutationFn: (memberIds: number[]) =>
       api.post<Kpi[]>(`/projects/${projectId}/kpi`, { member_ids: memberIds }),
-    onSuccess: (list) => {
+    onSuccess: (list, ids) => {
       qc.setQueryData(qk.kpi(projectId), list);
-      toast.success("KPI generation started");
+      toast.success(ids.length > 1 ? `KPI generation started for ${ids.length} members` : "KPI generation started");
     },
     onError: (err: ApiError) => toast.error(err.detail || "Could not start KPI generation"),
   });
-  if (!kpi) return <EmptyState icon={Gauge} title="Select a member" />;
+  const running = kpi.status === "running";
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {scopeSummary}
         {canGenerate ? (
-          <Button size="sm" disabled={kpi.status === "running" || generate.isPending}
-                  onClick={() => generate.mutate([kpi.member_id])}>
-            <Sparkles className="size-4" />
-            {kpi.status === "running" ? "Generating…" : kpi.kpi ? "Regenerate KPI" : "Generate KPI"}
-          </Button>
+          <div className="flex items-center gap-1.5">
+            {allMemberIds.length > 1 ? (
+              <Button size="sm" variant="outline" disabled={generate.isPending}
+                      title="Each member's own data scope is applied"
+                      onClick={() => generate.mutate(allMemberIds)}>
+                Generate for everyone ({allMemberIds.length})
+              </Button>
+            ) : null}
+            <Button size="sm" disabled={running || generate.isPending}
+                    onClick={() => generate.mutate([kpi.member_id])}>
+              <Sparkles className="size-4" />
+              {running ? "Generating…" : kpi.kpi ? "Regenerate KPI" : "Generate KPI"}
+            </Button>
+          </div>
         ) : null}
       </div>
       <KpiDetailCard kpi={kpi} />

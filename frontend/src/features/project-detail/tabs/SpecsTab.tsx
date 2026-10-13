@@ -506,7 +506,7 @@ export function SpecsTab({ projectId }: { projectId: number }) {
     });
 
   return (
-    <TabShell tab="specs">
+    <TabShell tab="specs" flat>
       {specId ? (
         <SpecView projectId={projectId} specId={specId} onBack={() => go(null)} />
       ) : (

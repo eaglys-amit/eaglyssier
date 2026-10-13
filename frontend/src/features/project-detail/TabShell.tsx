@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { cn } from "@/lib/utils";
 
 import { ALL_TABS, type TabKey } from "@/features/project-detail/tabs-nav";
 
@@ -16,10 +17,13 @@ import { ALL_TABS, type TabKey } from "@/features/project-detail/tabs-nav";
 export function TabShell({
   tab,
   actions,
+  flat = false,
   children,
 }: {
   tab: TabKey;
   actions?: ReactNode;
+  /** Cards in the body drop their shadow: flat sections, borders only. */
+  flat?: boolean;
   children: ReactNode;
 }) {
   const meta = ALL_TABS.find((t) => t.key === tab)!;
@@ -35,7 +39,9 @@ export function TabShell({
         description={meta.blurb}
         actions={actions}
       />
-      <div className="min-h-0 flex-1 p-6">{children}</div>
+      <div className={cn("min-h-0 flex-1 p-6", flat && "[&_[data-slot=card]]:shadow-none")}>
+        {children}
+      </div>
     </div>
   );
 }

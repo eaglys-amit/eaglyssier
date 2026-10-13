@@ -51,6 +51,7 @@ export function DeliverablesTab({ projectId }: { projectId: number }) {
 
   return (
     <TabShell
+      flat
       tab="deliverables"
       actions={
         <>
