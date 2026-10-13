@@ -14,6 +14,7 @@ from app.schemas.spec import (
     RequirementBrief,
     RequirementIn,
     RequirementLinkIn,
+    CriterionIn,
     RequirementPatchIn,
     ReviewItem,
     ScanResult,
@@ -24,9 +25,12 @@ from app.schemas.spec import (
     SpecSourceIn,
     SpecSummary,
     TaskRequirement,
+    UntracedTask,
 )
 from app.services import references as refs
 from app.services import repo_specs
+from app.api.authz import Access, get_access
+from app.services import spec_verify
 from app.services import specs as specs_svc
 
 router = APIRouter()
@@ -49,6 +53,35 @@ def list_requirements(project_id: int, db: Session = Depends(get_db)):
     """Every live requirement in the project, for pickers."""
     get_or_404(db, Project, project_id)
     return specs_svc.project_requirements(db, project_id)
+
+
+@router.get("/projects/{project_id}/specs/untraced", response_model=list[UntracedTask])
+def untraced(project_id: int, db: Session = Depends(get_db)):
+    """Recent tasks that implement no tracked requirement."""
+    get_or_404(db, Project, project_id)
+    return spec_verify.untraced_work(db, project_id)
+
+
+@router.put("/requirements/{requirement_id}/criteria/{index}", status_code=204)
+def set_criterion(
+    requirement_id: int, index: int, body: CriterionIn,
+    db: Session = Depends(get_db), access: Access = Depends(get_access),
+):
+    """Tick (or untick) one acceptance criterion as verified."""
+    req = specs_svc.get_requirement_or_404(db, requirement_id)
+    spec_verify.set_criterion(db, req, index, body.text, body.verified, access.user)
+
+
+@router.post("/requirements/{requirement_id}/ai-check", status_code=202)
+def ai_check(requirement_id: int, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Ask the AI provider whether the linked work shows each criterion delivered."""
+    req = specs_svc.get_requirement_or_404(db, requirement_id)
+    if not req.task_links:
+        raise HTTPException(400, "Link the tasks that implement this requirement first.")
+    if not spec_verify.claim_ai_check(db, req):
+        raise HTTPException(409, "A check is already running for this requirement.")
+    background.add_task(run_in_session, spec_verify.run_ai_check, req.id)
+    return {"status": "running"}
 
 
 @router.get("/projects/{project_id}/specs/review", response_model=list[ReviewItem])

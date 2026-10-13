@@ -31,6 +31,22 @@ class AcceptanceCriterion(BaseModel):
     verified_at: datetime | None = None
 
 
+class AiCriterionCheck(BaseModel):
+    text: str
+    verdict: Literal["met", "partial", "not_evident"]
+    evidence: str = ""
+
+
+class AiCheck(BaseModel):
+    """The AI's reading of the linked work against each criterion. Suggestions only."""
+    criteria: list[AiCriterionCheck]
+    summary: str = ""
+    # True when the requirement had no criteria and its statement was judged instead.
+    from_statement: bool = False
+    model: str | None = None
+    checked_at: datetime | None = None
+
+
 class LinkedTask(BaseModel):
     task_id: int
     key: str
@@ -55,6 +71,9 @@ class RequirementOut(BaseModel):
     changed_in_version: int | None
     status: RequirementStatus
     tasks: list[LinkedTask]
+    ai_check: AiCheck | None = None
+    ai_check_status: str = "none"
+    ai_check_error: str | None = None
 
 
 class SpecRevisionOut(BaseModel):
@@ -171,6 +190,32 @@ class ScanResult(BaseModel):
     linked: int
     removed: int
     ambiguous_keys: int
+
+
+class UntracedTask(BaseModel):
+    task_id: int
+    key: str
+    title: str
+    status_category: str
+    story_points: float | None
+    sprint_id: int | None
+    sprint_name: str
+    sprint_state: str | None
+
+
+class SpecCoverageRow(BaseModel):
+    id: int
+    title: str
+    status: str
+    version: int
+    source: str
+    coverage: Coverage
+
+
+class CriterionIn(BaseModel):
+    # The criterion's current text, so a tick can't land on an edited list.
+    text: str
+    verified: bool
 
 
 class SpecCreateIn(BaseModel):

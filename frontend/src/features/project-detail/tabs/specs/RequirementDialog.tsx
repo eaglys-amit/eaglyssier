@@ -33,6 +33,7 @@ import type {
   SpecDetail,
 } from "@/types/api";
 
+import { AcceptanceCriteria } from "./AcceptanceCriteria";
 import { changeBadge, requirementStatusBadge } from "./spec-ui";
 import { type RequirementDraft, useProjectTasks, useSpecMutations } from "./useSpecs";
 
@@ -280,20 +281,7 @@ export function RequirementDialog({
           <div className="space-y-4 text-sm">
             {r.statement ? <p>{r.statement}</p> : null}
 
-            <div>
-              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Acceptance criteria
-              </div>
-              {r.acceptance_criteria.length ? (
-                <ul className="list-disc space-y-1 pl-5">
-                  {r.acceptance_criteria.map((c, i) => (
-                    <li key={i}>{c.text}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-muted-foreground">None given in the spec.</p>
-              )}
-            </div>
+            <AcceptanceCriteria projectId={projectId} specId={spec.id} requirement={r} />
 
             {r.source_excerpt ? (
               <blockquote className="border-l-2 pl-3 text-xs text-muted-foreground">

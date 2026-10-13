@@ -150,6 +150,26 @@ function MilestoneCell({ project }: { project: PortfolioProject }) {
   );
 }
 
+function SpecCell({ project }: { project: PortfolioProject }) {
+  const c = project.spec_coverage;
+  if (!c || !c.total) return <span className="text-xs text-muted-foreground">No specs</span>;
+  const pctOf = (n: number) => Math.round((n / c.total) * 100);
+  return (
+    <Link to={`/projects/${project.id}/specs`} className="block min-w-32 space-y-1 text-xs hover:underline">
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary" style={{ width: `${pctOf(c.implemented)}%` }} />
+        </div>
+        <span className="font-mono tabular-nums">{pctOf(c.implemented)}%</span>
+      </div>
+      <div className="text-muted-foreground">
+        {c.implemented}/{c.total} implemented · {c.verified} verified
+      </div>
+      {c.total - c.linked ? <div className="text-warning">{c.total - c.linked} with no work</div> : null}
+    </Link>
+  );
+}
+
 function SyncCell({ project }: { project: PortfolioProject }) {
   return (
     <div className="text-xs">
@@ -231,6 +251,7 @@ export function PortfolioPage() {
                       <TableHead>Active sprint</TableHead>
                       <TableHead>Velocity</TableHead>
                       <TableHead>Next milestone</TableHead>
+                      <TableHead>Spec coverage</TableHead>
                       <TableHead>Last sync</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -264,6 +285,9 @@ export function PortfolioPage() {
                         </TableCell>
                         <TableCell>
                           <MilestoneCell project={p} />
+                        </TableCell>
+                        <TableCell>
+                          <SpecCell project={p} />
                         </TableCell>
                         <TableCell>
                           <SyncCell project={p} />

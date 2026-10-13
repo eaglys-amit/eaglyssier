@@ -46,6 +46,7 @@ import { RepoTasksSection, PlanSection } from "./specs/RepoSpecSections";
 import { RequirementDialog, RequirementForm } from "./specs/RequirementDialog";
 import { ReviewQueue } from "./specs/ReviewQueue";
 import { SpecSources } from "./specs/SpecSources";
+import { UntracedWork } from "./specs/UntracedWork";
 import { changeBadge, CoverageBars, requirementStatusBadge } from "./specs/spec-ui";
 import { useSpec, useSpecList, useSpecMutations } from "./specs/useSpecs";
 
@@ -214,6 +215,7 @@ function SpecList({ projectId, onOpen }: { projectId: number; onOpen: (id: numbe
           </CardContent>
         </Card>
       )}
+      <UntracedWork projectId={projectId} />
       <NewSpecDialog projectId={projectId} open={creating} onOpenChange={setCreating} onCreated={onOpen} />
     </div>
   );

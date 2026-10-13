@@ -35,7 +35,7 @@ storage.
   from the data. A project can opt in to a weekly one (Mondays 00:30 UTC,
   covering the past 7 days) — this needs `RUN_SCHEDULER=true`, which the dev
   compose file turns off.
-- **Specs** (spec-driven tracking, first slice): track an uploaded document as a
+- **Specs** (spec-driven tracking): track an uploaded document as a
   spec on the Specs tab. Its requirements (keeping the document's own numbering,
   e.g. FR-001) are extracted by the project's AI provider, and each one is linked
   to the tasks that implement it. Its status comes from those tasks: untraced,
@@ -64,6 +64,18 @@ storage.
     unique across the project's specs are used.
   - *Review queue* — the Specs tab lists every link whose requirement changed or
     was removed since it was made, with "Still fits" / "Unlink".
+- **Verification & coverage** (`app/services/spec_verify.py`):
+  - Tech Leads and PMs tick each acceptance criterion; a requirement whose linked
+    tasks are all done and whose criteria are all ticked is *verified*.
+  - "Check with AI" reads the linked tasks and their commits' analyses and
+    suggests met / partial / not evident per criterion, citing tasks and commit
+    SHAs. It never ticks anything, and is cleared when the requirement changes.
+  - *Untraced work* on the Specs tab lists tasks in the active, upcoming and last
+    closed sprint that implement no requirement.
+  - The Portfolio gains a spec coverage column (implemented / verified), and a
+    project turns amber when task links wait more than 3 days for review after a
+    spec change. The Executive report gains a "Specification coverage" section
+    with per-spec progress and must-have requirements that have no work yet.
 - Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start

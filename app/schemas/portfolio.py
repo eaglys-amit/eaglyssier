@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.schemas.spec import Coverage
+
 Health = Literal["green", "amber", "red", "unknown"]
 
 
@@ -63,6 +65,9 @@ class PortfolioProject(BaseModel):
     next_milestone: PortfolioMilestone | None
     last_synced_at: datetime | None
     last_sync_failed: bool
+    # Requirements of the project's approved specs (drafts if none approved);
+    # None when the project tracks no specs.
+    spec_coverage: Coverage | None = None
 
 
 class PortfolioOut(BaseModel):

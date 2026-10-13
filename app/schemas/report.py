@@ -179,6 +179,11 @@ class ExecutiveSection(BaseModel):
     whole_project: bool = True
     shipped: list[ShippedTask] = Field(default_factory=list)
     shipped_more: int = 0
+    # Specification coverage (None when the project tracks no specs): totals,
+    # one row per counted spec, and untraced must-have requirements.
+    spec_coverage: dict | None = None
+    spec_rows: list[dict] = Field(default_factory=list)
+    spec_gaps: list[dict] = Field(default_factory=list)
     narrative: ExecNarrative | None = None
     # Why there's no narrative (provider error, not configured), if there isn't.
     narrative_error: str | None = None

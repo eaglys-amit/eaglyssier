@@ -13,6 +13,7 @@ import type {
   SpecSummary,
   Task,
   TaskRequirement,
+  UntracedTask,
 } from "@/types/api";
 
 const running = (s?: { extract_status: string }) => s?.extract_status === "running";
@@ -30,7 +31,19 @@ export function useSpec(specId: number | null) {
     queryKey: qk.spec(specId ?? 0),
     queryFn: () => api.get<SpecDetail>(`/specs/${specId}`),
     enabled: specId !== null,
-    refetchInterval: (q) => (running(q.state.data) ? 2000 : false),
+    // Poll while it's being read, or while any requirement's AI check runs.
+    refetchInterval: (q) =>
+      running(q.state.data) ||
+      q.state.data?.requirements.some((r) => r.ai_check_status === "running")
+        ? 2000
+        : false,
+  });
+}
+
+export function useUntraced(projectId: number) {
+  return useQuery({
+    queryKey: qk.specUntraced(projectId),
+    queryFn: () => api.get<UntracedTask[]>(`/projects/${projectId}/specs/untraced`),
   });
 }
 
@@ -100,6 +113,21 @@ export function useSpecMutations(projectId: number, specId?: number | null) {
   const fail = (fallback: string) => (err: ApiError) => toast.error(err.detail || fallback);
 
   return {
+    setCriterion: useMutation({
+      mutationFn: ({ requirementId, index, text, verified }: {
+        requirementId: number; index: number; text: string; verified: boolean;
+      }) => api.put(`/requirements/${requirementId}/criteria/${index}`, { text, verified }),
+      onSuccess: () => refresh(),
+      onError: fail("Could not update the criterion"),
+    }),
+    aiCheck: useMutation({
+      mutationFn: (requirementId: number) => api.post(`/requirements/${requirementId}/ai-check`),
+      onSuccess: () => {
+        refresh();
+        toast.success("Checking the linked work against the criteria…");
+      },
+      onError: fail("Could not start the check"),
+    }),
     scan: useMutation({
       mutationFn: () =>
         api.post<{ linked: number; removed: number; ambiguous_keys: number }>(

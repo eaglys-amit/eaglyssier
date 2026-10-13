@@ -1,0 +1,43 @@
+{# Executive report: how much of the tracked specs is delivered and verified. #}
+{% set ex = ctx.executive %}
+{% if ex.spec_coverage %}
+{% from "macros/table.html.j2" import progress %}
+{% set c = ex.spec_coverage %}
+{% macro pct(n, total) %}{{ ((n / total * 100)|round|int) if total else 0 }}{% endmacro %}
+<section>
+  <h2>Specification coverage</h2>
+  <div class="card splittable">
+    <p style="margin-top:0">
+      <strong>{{ c.implemented }}</strong> of <strong>{{ c.total }}</strong> requirements implemented
+      ({{ pct(c.implemented, c.total) }}%), <strong>{{ c.verified }}</strong> verified against their
+      acceptance criteria; {{ c.total - c.linked }} have no work linked yet.
+      {% if c.needs_review %}<span class="flag">{{ c.needs_review }} changed since their work was planned.</span>{% endif %}
+    </p>
+    <table>
+      <thead><tr>
+        <th>Spec</th><th class="num">Requirements</th><th>Implemented</th>
+        <th class="num">Verified</th><th class="num">No work</th>
+      </tr></thead>
+      <tbody>
+      {% for s in ex.spec_rows %}
+        <tr>
+          <td>{{ s.title }}{% if s.status != 'approved' %} <span class="muted">(draft)</span>{% endif %}
+            <span class="muted" style="font-size:11px">v{{ s.version }}</span></td>
+          <td class="num">{{ s.coverage.total }}</td>
+          <td style="min-width:140px">{{ progress(pct(s.coverage.implemented, s.coverage.total)|int) }}
+            <span class="muted" style="font-size:11px">{{ s.coverage.implemented }}/{{ s.coverage.total }}</span></td>
+          <td class="num">{{ s.coverage.verified }}</td>
+          <td class="num">{{ s.coverage.total - s.coverage.linked }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if ex.spec_gaps %}
+    <p style="margin-bottom:0"><strong>Must-haves with no work planned:</strong></p>
+    <ul class="exec">
+      {% for g in ex.spec_gaps %}<li class="flag">{{ g.key }} — {{ g.title }} <span class="muted">({{ g.spec }})</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

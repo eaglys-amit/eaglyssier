@@ -1565,6 +1565,8 @@ export interface PortfolioProject {
   next_milestone: PortfolioMilestone | null;
   last_synced_at: string | null;
   last_sync_failed: boolean;
+  /** Approved specs (drafts if none approved); null when no specs are tracked. */
+  spec_coverage: SpecCoverage | null;
 }
 
 export interface Portfolio {
@@ -1626,6 +1628,30 @@ export interface Requirement {
   changed_in_version: number | null;
   status: RequirementStatus;
   tasks: RequirementLinkedTask[];
+  ai_check: RequirementAiCheck | null;
+  ai_check_status: "none" | "running" | "ready" | "failed";
+  ai_check_error: string | null;
+}
+
+/** The AI's reading of linked work against each criterion. Suggestions only. */
+export interface RequirementAiCheck {
+  criteria: { text: string; verdict: "met" | "partial" | "not_evident"; evidence: string }[];
+  summary: string;
+  /** No criteria existed, so the statement was judged instead. */
+  from_statement: boolean;
+  model: string | null;
+  checked_at: string | null;
+}
+
+export interface UntracedTask {
+  task_id: number;
+  key: string;
+  title: string;
+  status_category: StatusCategory;
+  story_points: number | null;
+  sprint_id: number | null;
+  sprint_name: string;
+  sprint_state: string | null;
 }
 
 export interface SpecSummary {

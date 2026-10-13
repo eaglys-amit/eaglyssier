@@ -21,6 +21,7 @@ from app.models import (
     EvaluationSheet,
     GitRepo,
     RepoDoc,
+    Requirement,
     Spec,
     SyncRun,
     SyncStatus,
@@ -186,6 +187,10 @@ def _reconcile_orphaned_spec_extractions() -> None:
         repos = db.execute(
             update(GitRepo).where(GitRepo.spec_sync_status == "running")
             .values(spec_sync_status="failed", spec_sync_error="Interrupted by server restart.")
+        )
+        db.execute(
+            update(Requirement).where(Requirement.ai_check_status == "running")
+            .values(ai_check_status="failed", ai_check_error="Interrupted by server restart.")
         )
         db.commit()
         if result.rowcount or repos.rowcount:

@@ -24,6 +24,7 @@ from app.schemas.report import (
 )
 from app.services import analyzers
 from app.services import milestones as milestones_svc
+from app.services import spec_verify
 from app.services import tasks as tasks_svc
 from app.services.burndown import build_velocity
 from app.services.metrics import _resolve_scope, build_report_context
@@ -51,6 +52,8 @@ Delivery in the period: {completed_sp} of {assigned_sp} story points done \
 ({tasks_done} of {total_tasks} tasks).
 Active sprint: {sprint}
 Velocity: {velocity}
+
+Specification coverage: {spec_coverage}
 
 Open milestones (milestone · target · forecast P50–P85 · chance on time · health):
 {milestones}
@@ -132,12 +135,25 @@ def _prompt(ctx: ReportContext, ex: ExecutiveSection) -> str:
         total_tasks=ctx.summary.total_tasks,
         sprint=sprint_text,
         velocity=velocity,
+        spec_coverage=_spec_line(ex),
         milestones=milestones,
         milestones_done=ex.milestones_done,
         deliverables=deliverables if ex.whole_project else "(see finished work below)",
         shipped=shipped,
         n=MAX_ITEMS,
     )
+
+
+def _spec_line(ex: ExecutiveSection) -> str:
+    cov = ex.spec_coverage
+    if not cov:
+        return "no specs are tracked"
+    line = (f"{cov['implemented']} of {cov['total']} requirements implemented, "
+            f"{cov['verified']} verified, {cov['total'] - cov['linked']} with no work linked")
+    if ex.spec_gaps:
+        line += "; must-haves with no work: " + ", ".join(
+            f"{g['key']} {g['title']} ({g['spec']})" for g in ex.spec_gaps)
+    return line
 
 
 def _strings(value) -> list[str]:
@@ -201,6 +217,11 @@ def build_executive_context(
         shipped=shipped[:SHIPPED_SHOWN],
         shipped_more=max(0, len(shipped) - SHIPPED_SHOWN),
     )
+    coverage, spec_rows, _ = spec_verify.project_coverage(db, project_id)
+    if coverage is not None:
+        ex.spec_coverage = coverage.model_dump()
+        ex.spec_rows = [r.model_dump() for r in spec_rows]
+        ex.spec_gaps = spec_verify.must_gaps(db, project_id)
     ctx.executive = ex
     if narrate:
         # The prompt sees the full list, not just what the fallback shows.

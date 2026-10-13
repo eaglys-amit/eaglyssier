@@ -1249,6 +1249,15 @@ class Requirement(Base, TimestampMixin):
         String(16), nullable=False, default="unchanged", server_default="unchanged"
     )
     changed_in_version: Mapped[int | None] = mapped_column(Integer)
+    # AI check of the acceptance criteria against linked work (see
+    # app.services.spec_verify): {"criteria": [{"text", "verdict", "evidence"}],
+    # "summary", "model", "checked_at"}. Suggestions only — a person still
+    # ticks each criterion. Cleared when the requirement changes.
+    ai_check: Mapped[dict | None] = mapped_column(JSON)
+    ai_check_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )  # none | running | ready | failed
+    ai_check_error: Mapped[str | None] = mapped_column(Text)
 
     spec: Mapped["Spec"] = relationship(back_populates="requirements")
     task_links: Mapped[list["RequirementTask"]] = relationship(

@@ -229,6 +229,8 @@ def spec_detail(db: Session, spec_id: int) -> SpecDetail:
                 acceptance_criteria=_criteria(req.acceptance_criteria),
                 source_excerpt=req.source_excerpt, change_state=req.change_state,
                 changed_in_version=req.changed_in_version, status=status,
+                ai_check=req.ai_check if isinstance(req.ai_check, dict) else None,
+                ai_check_status=req.ai_check_status, ai_check_error=req.ai_check_error,
                 tasks=[
                     LinkedTask(
                         task_id=link.task.id, key=tasks_svc.task_label(link.task),
@@ -462,6 +464,8 @@ def apply_version(
         if m.changed or was_removed:
             req.change_state = "added" if was_removed else "changed"
             req.changed_in_version = version
+            # An AI check of the old wording says nothing about the new one.
+            req.ai_check, req.ai_check_status = None, "none"
             for link in req.task_links:
                 link.needs_review = True
 
