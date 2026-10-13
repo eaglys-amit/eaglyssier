@@ -13,10 +13,12 @@ Matching, in order:
 
 Changed vs unchanged is judged on the verbatim excerpt too, never on the
 model's paraphrase: re-extracting an untouched paragraph rewords the
-statement, and that must not light up as a change. It is deliberately strict
-— same words, or one excerpt containing the other (the model quoting a little
-more or less of the same passage) — because a one-character edit ("30" → "10
-minutes", "must" → "must not") is exactly the kind of change that matters.
+statement, and that must not light up as a change. It is deliberately strict:
+the same words, or the same words plus whole neighbouring sentences (the model
+quoting a sentence more or less of context). A one-character edit ("30" → "10
+minutes", "must" → "must not") or an added clause ("by date" → "by date and
+location") counts as changed — a false alarm costs a review, a missed change
+is what this exists to prevent.
 
 Manual requirements (added by hand, key_origin "manual") never take part —
 they aren't in the source, so a new version can't match or remove them.
@@ -97,9 +99,27 @@ def _words(text: str) -> str:
     return " ".join(re.findall(r"[0-9a-z]+", text))
 
 
+def _sentences(text: str) -> list[str]:
+    return [w for s in re.split(r"(?<=[.!?;])\s+", text) if (w := _words(s))]
+
+
+def _same_passage(a: str, b: str) -> bool:
+    """Same words, or one is a run of whole sentences of the other."""
+    wa, wb = _words(a), _words(b)
+    if wa == wb:
+        return True
+    short, long_ = (a, b) if len(wa) < len(wb) else (b, a)
+    target = _words(short)
+    sentences = _sentences(long_)
+    for i in range(len(sentences)):
+        for j in range(i + 1, len(sentences) + 1):
+            if " ".join(sentences[i:j]) == target:
+                return True
+    return False
+
+
 def _changed(old: Existing, new: Parsed) -> bool:
-    a, b = _words(old.basis), _words(new.basis)
-    if not (a == b or (a and b and (a in b or b in a))):
+    if not _same_passage(old.basis, new.basis):
         return True
     return [_norm(c) for c in old.acceptance_criteria] != [
         _norm(c) for c in new.acceptance_criteria

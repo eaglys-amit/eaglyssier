@@ -38,6 +38,7 @@ from app.schemas.spec import (
     SpecDetail,
     SpecRevisionOut,
     SpecSummary,
+    RepoTaskOut,
     RequirementBrief,
     TaskRequirement,
 )
@@ -166,6 +167,7 @@ def _load(db: Session, spec_ids: list[int]) -> list[Spec]:
         .where(Spec.id.in_(spec_ids or [-1]))
         .options(
             selectinload(Spec.reference_file),
+            selectinload(Spec.repo),
             selectinload(Spec.requirements)
             .selectinload(Requirement.task_links)
             .selectinload(RequirementTask.task),
@@ -188,6 +190,11 @@ def _summary(spec: Spec, rows) -> dict:
         has_pending_version=spec.pending_file_id is not None and spec.version > 0,
         coverage=coverage_of(rows),
         updated_at=spec.updated_at,
+        repo_id=spec.repo_id,
+        repo_name=spec.repo.name if spec.repo else None,
+        path=spec.path,
+        ref=spec.ref,
+        missing_in_repo=spec.missing_in_repo,
     )
 
 
@@ -237,7 +244,41 @@ def spec_detail(db: Session, spec_id: int) -> SpecDetail:
             SpecRevisionOut(version=r.version, created_at=r.created_at, changes=r.changes or {})
             for r in revisions
         ],
+        repo_url=_repo_url(spec),
+        plan_markdown=spec.plan_markdown,
+        repo_tasks=_repo_tasks_out(db, spec),
     )
+
+
+def _repo_url(spec: Spec) -> str | None:
+    """A browser link to the spec folder on its branch, when the host is known."""
+    repo = spec.repo
+    if not (repo and repo.url and spec.path and spec.ref):
+        return None
+    base = repo.url.rstrip("/")
+    sep = "/-/tree/" if repo.provider.value == "gitlab" else "/tree/"
+    return f"{base}{sep}{spec.ref}/{spec.path}"
+
+
+def _repo_tasks_out(db: Session, spec: Spec) -> list[RepoTaskOut]:
+    lines = spec.repo_tasks or []
+    ids = [rt["task_id"] for rt in lines if rt.get("task_id")]
+    tasks = {
+        t.id: t for t in db.execute(select(Task).where(Task.id.in_(ids or [-1]))).scalars()
+    }
+    out = []
+    for rt in lines:
+        task = tasks.get(rt.get("task_id"))
+        out.append(RepoTaskOut(
+            **{k: rt.get(k) for k in ("key", "text", "done", "story", "match")},
+            parallel=bool(rt.get("parallel")),
+            requirement_keys=rt.get("requirement_keys") or [],
+            task_id=task.id if task else None,
+            task_key=tasks_svc.task_label(task) if task else None,
+            task_title=task.title if task else None,
+            task_status_category=task.status_category.value if task else None,
+        ))
+    return out
 
 
 def project_requirements(db: Session, project_id: int) -> list[RequirementBrief]:
@@ -455,6 +496,14 @@ def apply_version(
     return counts
 
 
+def extract_with_llm(project, document: str) -> tuple[list[spec_diff.Parsed], str | None]:
+    """Requirements from free-form spec text via the project's provider: (parsed, model)."""
+    provider = project.analysis_provider or settings.default_analysis_provider
+    analyzer = analyzers.get_analyzer(provider, config={"model": project.analysis_model})
+    result = analyzer.analyze(_PROMPT.format(document=document))
+    return parse_requirements(result.data), result.model
+
+
 def extract_document_spec(db: Session, spec_id: int) -> None:
     """Background job: read the pending (or current) file and apply it. Never raises."""
     spec = db.get(Spec, spec_id)
@@ -476,17 +525,13 @@ def extract_document_spec(db: Session, spec_id: int) -> None:
             return
 
         document = refs.documents_text(db, [file.id], budget=settings.breakdown_max_prompt_chars)
-        project = spec.project
-        provider = project.analysis_provider or settings.default_analysis_provider
-        analyzer = analyzers.get_analyzer(provider, config={"model": project.analysis_model})
-        result = analyzer.analyze(_PROMPT.format(document=document))
-        parsed = parse_requirements(result.data)
+        parsed, model = extract_with_llm(spec.project, document)
 
         apply_version(db, spec, parsed, text=text, file_id=file.id)
         spec.pending_file_id = None
         spec.extract_status = "ready"
         spec.extract_error = None
-        spec.extract_model = result.model
+        spec.extract_model = model
         spec.synced_at = _now()
         db.commit()
     except Exception as exc:  # noqa: BLE001 - failures land on the row

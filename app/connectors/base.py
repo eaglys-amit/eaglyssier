@@ -72,3 +72,17 @@ class GitConnector(BaseConnector):
 
     def fetch_pull_requests(self, repo: RepoDTO) -> Iterable[PullRequestDTO]:
         raise NotImplementedError
+
+    # ---- repository files (spec sync) ----
+
+    def default_branch(self, repo: RepoDTO) -> str:
+        """The repository's default branch name."""
+        raise NotImplementedError
+
+    def list_files(self, repo: RepoDTO, prefix: str, ref: str) -> list[str]:
+        """Paths of every file under `prefix` (e.g. "specs/") at `ref`, recursively."""
+        raise NotImplementedError
+
+    def read_file(self, repo: RepoDTO, path: str, ref: str) -> str | None:
+        """A text file's contents at `ref`, or None if it doesn't exist."""
+        raise NotImplementedError

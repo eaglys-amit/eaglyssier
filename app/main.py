@@ -176,16 +176,23 @@ def _reconcile_orphaned_syncs() -> None:
 
 
 def _reconcile_orphaned_spec_extractions() -> None:
-    """A spec extraction that was running when the server stopped will never finish."""
+    """Spec extractions and repo spec syncs running at shutdown will never finish."""
     db = SessionLocal()
     try:
         result = db.execute(
             update(Spec).where(Spec.extract_status == "running")
             .values(extract_status="failed", extract_error="Interrupted by server restart.")
         )
+        repos = db.execute(
+            update(GitRepo).where(GitRepo.spec_sync_status == "running")
+            .values(spec_sync_status="failed", spec_sync_error="Interrupted by server restart.")
+        )
         db.commit()
-        if result.rowcount:
-            logging.getLogger("startup").info("Reset %d spec extraction(s).", result.rowcount)
+        if result.rowcount or repos.rowcount:
+            logging.getLogger("startup").info(
+                "Reset %d spec extraction(s) and %d repo spec sync(s).",
+                result.rowcount, repos.rowcount,
+            )
     except Exception:  # noqa: BLE001
         logging.getLogger("startup").warning("Could not reconcile orphaned spec extractions.")
     finally:

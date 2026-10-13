@@ -133,6 +133,50 @@ class GitLabConnector(GitConnector):
             last_error or f"GitLab namespace '{owner}' not found, or the token cannot see it."
         )
 
+    # ---- repository files ----
+
+    @staticmethod
+    def _pid(repo: RepoDTO) -> str:
+        return str(repo.external_id or repo.name).replace("/", "%2F")
+
+    def default_branch(self, repo: RepoDTO) -> str:
+        with self._client() as c:
+            r = c.get(f"/projects/{self._pid(repo)}")
+            if r.status_code >= 400:
+                raise ConnectorError(f"GitLab project {repo.name} failed: {r.status_code}")
+            return r.json().get("default_branch") or "main"
+
+    def list_files(self, repo: RepoDTO, prefix: str, ref: str) -> list[str]:
+        prefix = prefix.strip("/")
+        out: list[str] = []
+        page = "1"
+        with self._client() as c:
+            while page:
+                r = c.get(
+                    f"/projects/{self._pid(repo)}/repository/tree",
+                    params={"path": prefix, "ref": ref, "recursive": "true",
+                            "per_page": 100, "page": page},
+                )
+                if r.status_code == 404:
+                    # GitLab answers 404 for a missing path as well as a missing ref.
+                    return []
+                if r.status_code >= 400:
+                    raise ConnectorError(f"GitLab tree {repo.name}@{ref} failed: {r.status_code}")
+                out += [e["path"] for e in r.json() if e.get("type") == "blob"]
+                page = r.headers.get("x-next-page", "")
+        return sorted(out)
+
+    def read_file(self, repo: RepoDTO, path: str, ref: str) -> str | None:
+        enc = path.replace("/", "%2F")
+        with self._client() as c:
+            r = c.get(f"/projects/{self._pid(repo)}/repository/files/{enc}/raw",
+                      params={"ref": ref})
+            if r.status_code == 404:
+                return None
+            if r.status_code >= 400:
+                raise ConnectorError(f"GitLab file {path} failed: {r.status_code}")
+            return r.content.decode("utf-8", errors="replace")
+
     def _repo(self, client: httpx.Client, pid: str) -> RepoDTO:
         enc = str(pid).replace("/", "%2F")
         r = client.get(f"/projects/{enc}")

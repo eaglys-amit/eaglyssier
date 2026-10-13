@@ -234,8 +234,14 @@ def test_small_meaningful_edits_count_as_changed():
     assert all(m.changed for m in spec_diff.plan_version(old, new).matches)
 
 
-def test_quoting_more_of_the_same_passage_is_not_a_change():
+def test_quoting_a_sentence_more_context_is_not_a_change():
     old = [_ex(1, "FR-1", "Sessions expire after 30 minutes.")]
     new = [P("FR-1", True, "t", "s",
-             source_excerpt="Security: sessions expire after 30 minutes, per policy.")]
+             source_excerpt="Security matters. Sessions expire after 30 minutes. See policy.")]
     assert spec_diff.plan_version(old, new).matches[0].changed is False
+
+
+def test_an_added_clause_is_a_change():
+    old = [_ex(1, "FR-1", "Group photos by capture date.")]
+    new = [P("FR-1", True, "t", "s", source_excerpt="Group photos by capture date and location.")]
+    assert spec_diff.plan_version(old, new).matches[0].changed is True

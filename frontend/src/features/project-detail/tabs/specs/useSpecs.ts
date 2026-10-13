@@ -8,6 +8,7 @@ import type {
   RequirementKind,
   RequirementPriority,
   SpecDetail,
+  SpecSource,
   SpecSummary,
   Task,
   TaskRequirement,
@@ -29,6 +30,15 @@ export function useSpec(specId: number | null) {
     queryFn: () => api.get<SpecDetail>(`/specs/${specId}`),
     enabled: specId !== null,
     refetchInterval: (q) => (running(q.state.data) ? 2000 : false),
+  });
+}
+
+export function useSpecSources(projectId: number) {
+  return useQuery({
+    queryKey: qk.specSources(projectId),
+    queryFn: () => api.get<SpecSource[]>(`/projects/${projectId}/spec-sources`),
+    refetchInterval: (q) =>
+      q.state.data?.some((s) => s.spec_sync_status === "running") ? 2000 : false,
   });
 }
 
@@ -71,6 +81,7 @@ export function useSpecMutations(projectId: number, specId?: number | null) {
   const refresh = () => {
     qc.invalidateQueries({ queryKey: qk.specs(projectId) });
     qc.invalidateQueries({ queryKey: qk.projectRequirements(projectId) });
+    qc.invalidateQueries({ queryKey: qk.specSources(projectId) });
     // Every open spec detail and every task sheet's requirement list: a link or
     // an edit shows up in both, and they're cheap to refetch.
     qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "specs" });
@@ -81,6 +92,20 @@ export function useSpecMutations(projectId: number, specId?: number | null) {
   const fail = (fallback: string) => (err: ApiError) => toast.error(err.detail || fallback);
 
   return {
+    setSource: useMutation({
+      mutationFn: ({ repoId, enabled, specPath }: { repoId: number; enabled: boolean; specPath: string }) =>
+        api.put<SpecSource>(`/repos/${repoId}/spec-source`, { enabled, spec_path: specPath }),
+      onSuccess: (s) => {
+        refresh();
+        toast.success(s.spec_sync_enabled ? `Reading specs from ${s.name}` : `Stopped syncing ${s.name}`);
+      },
+      onError: fail("Could not change the spec source"),
+    }),
+    syncSource: useMutation({
+      mutationFn: (repoId: number) => api.post<SpecSource>(`/repos/${repoId}/specs/sync`),
+      onSuccess: () => refresh(),
+      onError: fail("Could not start the spec sync"),
+    }),
     create: useMutation({
       mutationFn: (body: { reference_file_id: number; title: string | null }) =>
         api.post<SpecDetail>(`/projects/${projectId}/specs`, body),

@@ -1638,11 +1638,50 @@ export interface SpecSummary {
   has_pending_version: boolean;
   coverage: SpecCoverage;
   updated_at: string;
+  /** source="repo" */
+  repo_id: number | null;
+  repo_name: string | null;
+  path: string | null;
+  ref: string | null;
+  /** The folder disappeared from the repo on the last sync; kept, not deleted. */
+  missing_in_repo: boolean;
+}
+
+/** One tasks.md line and the tracker task it matched (match only — never created). */
+export interface RepoTask {
+  key: string;
+  text: string;
+  done: boolean;
+  story: string | null;
+  parallel: boolean;
+  requirement_keys: string[];
+  task_id: number | null;
+  match: "key" | "title" | null;
+  task_key: string | null;
+  task_title: string | null;
+  task_status_category: StatusCategory | null;
+}
+
+export interface SpecSource {
+  repo_id: number;
+  name: string;
+  url: string | null;
+  provider: string;
+  spec_sync_enabled: boolean;
+  spec_path: string;
+  default_branch: string | null;
+  spec_sync_status: "none" | "running" | "ready" | "failed";
+  spec_sync_error: string | null;
+  spec_synced_at: string | null;
+  spec_count: number;
 }
 
 export interface SpecDetail extends SpecSummary {
   requirements: Requirement[];
   revisions: { version: number; created_at: string; changes: Record<string, number> }[];
+  repo_url: string | null;
+  plan_markdown: string | null;
+  repo_tasks: RepoTask[];
 }
 
 export interface TaskRequirement {

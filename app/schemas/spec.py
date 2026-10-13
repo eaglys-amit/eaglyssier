@@ -63,6 +63,41 @@ class SpecRevisionOut(BaseModel):
     changes: dict
 
 
+class RepoTaskOut(BaseModel):
+    """One tasks.md line and the tracker task it matched (match only)."""
+    key: str
+    text: str
+    done: bool
+    story: str | None = None
+    parallel: bool = False
+    requirement_keys: list[str] = []
+    task_id: int | None = None
+    match: str | None = None  # key | title
+    task_key: str | None = None
+    task_title: str | None = None
+    task_status_category: str | None = None
+
+
+class SpecSource(BaseModel):
+    """A repository that can feed specs, and its spec sync state."""
+    repo_id: int
+    name: str
+    url: str | None
+    provider: str
+    spec_sync_enabled: bool
+    spec_path: str
+    default_branch: str | None
+    spec_sync_status: str
+    spec_sync_error: str | None
+    spec_synced_at: datetime | None
+    spec_count: int
+
+
+class SpecSourceIn(BaseModel):
+    enabled: bool
+    spec_path: str = "specs/"
+
+
 class SpecSummary(BaseModel):
     id: int
     title: str
@@ -78,11 +113,20 @@ class SpecSummary(BaseModel):
     has_pending_version: bool
     coverage: Coverage
     updated_at: datetime
+    # source="repo"
+    repo_id: int | None = None
+    repo_name: str | None = None
+    path: str | None = None
+    ref: str | None = None
+    missing_in_repo: bool = False
 
 
 class SpecDetail(SpecSummary):
     requirements: list[RequirementOut]
     revisions: list[SpecRevisionOut]
+    repo_url: str | None = None
+    plan_markdown: str | None = None
+    repo_tasks: list[RepoTaskOut] = []
 
 
 class TaskRequirement(BaseModel):

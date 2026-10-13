@@ -42,8 +42,18 @@ storage.
   planned, in progress, implemented. Uploading a revised document compares
   versions by each requirement's quoted source text, marks it new, changed or
   removed, and flags affected task links for review. See `app/services/specs.py`
-  and `app/services/spec_diff.py`. Repository specs, automatic linking and
-  verification come in later slices.
+  and `app/services/spec_diff.py`.
+- **Repository specs** (spec-kit): turn a repository on in the Specs tab's
+  "Specs in repositories" panel and every `specs/<feature>/` folder with a
+  `spec.md` becomes a spec, re-read on each repo sync (`app/services/repo_specs.py`,
+  parser in `app/services/speckit.py`). User stories (`### User Story 1 - …
+  (Priority: P1)`, with their Given/When/Then scenarios) and keyed lines
+  (`**FR-001**`, `NFR-`, `SC-`) become requirements; free-form files fall back to
+  the AI. `tasks.md` lines (`- [ ] T012 [US1] …`) are matched to existing tracker
+  tasks — never created — and linked to the stories and FR keys they name.
+  Unlinked commits whose message names a task id (T012) or requirement key
+  (FR-003) that resolves to exactly one task get linked to it. Repo specs are
+  read-only here; change them in the repository.
 - Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start
