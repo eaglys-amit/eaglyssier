@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { api } from "@/lib/api";
+import { useAccess } from "@/lib/permissions";
 import { qk } from "@/lib/query-keys";
 import type { Member, ProjectMembers } from "@/types/api";
 
@@ -11,7 +12,9 @@ const storageKey = (projectId: number) => `eaglyssier:poker:${projectId}:me`;
 /**
  * Which member the person at this browser is voting as.
  *
- * The app has no auth, so identity is a local choice. It's kept in
+ * A signed-in user who is on the project always votes as their own member —
+ * the server refuses votes cast for anyone else. The local choice below is
+ * only the fallback for admins who aren't on the project. It's kept in
  * localStorage rather than only in the URL on purpose: with a `?me=` param
  * alone, pasting the session link into Slack would make everyone the same
  * voter. The param is still honoured so a link can pre-select someone, and it's
@@ -42,8 +45,10 @@ export function usePokerMe(projectId: number) {
     enabled: Number.isFinite(projectId),
   });
 
+  const { memberId: ownId } = useAccess(projectId);
   const candidates: Member[] = members?.members ?? [];
-  const resolvedId = paramValue ?? stored;
+  const own = candidates.some((m) => m.id === ownId) ? ownId : null;
+  const resolvedId = own ?? paramValue ?? stored;
   const me = candidates.find((m) => m.id === resolvedId) ?? null;
 
   const choose = useCallback(

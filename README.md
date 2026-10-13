@@ -16,7 +16,11 @@ storage.
   (commits, PRs, reviews per member). Slack + Google Workspace are stubbed.
 - Identity reconciliation: one Member per person, linking Jira/GitHub/GitLab accounts.
 - Sprint & project reports with reusable, componentized templates → HTML + PDF in RustFS.
-- No authentication (internal tool).
+- **Portfolio** (`/portfolio`): every project you belong to on one screen — health
+  (green/amber/red with the reasons), active sprint progress and scope change,
+  velocity trend, next milestone and data freshness. Thresholds are constants at
+  the top of `app/services/portfolio.py`.
+- Email + password login with a role per project (see [Users & roles](#users--roles)).
 
 ## Quick start
 
@@ -25,7 +29,8 @@ cp .env.example .env          # adjust secrets if you like
 docker compose up --build     # starts db, rustfs, app (migrations run on boot)
 ```
 
-Open http://localhost:8000 → the **Projects** dashboard (the image builds and
+Open http://localhost:8000 and sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from
+`.env` (that admin is created on first boot, while no user exists) → the **Projects** dashboard (the image builds and
 serves the React SPA; no Node needed on the host).
 
 ### Try it with demo data (no live credentials needed)
@@ -54,6 +59,41 @@ the saved token is reused, so it does not need retyping.
 Click **Sync** on the Data tab, reconcile any identities under **Members**, then
 generate a report. A background scheduler also re-syncs enabled integrations every
 `SYNC_INTERVAL_MINUTES`.
+
+## Users & roles
+
+Everyone signs in. A **user** (login) is linked to a curated **member**, and the
+member's role on each project decides what that user can do there:
+
+| | VP of Product | Tech Lead | Project Manager | Developer |
+|---|---|---|---|---|
+| Read project data, roadmap, scrums, docs, reports | ✓ | ✓ | ✓ | ✓ |
+| Generate reports; edit milestones | ✓ | ✓ | ✓ | |
+| Backlog tasks | | ✓ | ✓ | ✓ |
+| Sprints, capacity, epics, breakdowns, SP scale | | ✓ | ✓ | |
+| Evaluation sheets & KPIs | | all members | all members | own only |
+| Sync, commit analysis, repo docs | | ✓ | ✓ | |
+| Project membership & roles | | | ✓ | |
+| Terminal | | ✓ | | |
+
+Evaluation fields follow the same split: the member fills in goals and their
+self-grade, the tech lead grades, the project manager sets the final grade.
+
+**Admin** is a separate flag, independent of project roles: it manages users
+(the **Users** page), integrations, the Claude provider, and creates/deletes
+projects, and passes every check. Only projects you are a member of are listed
+(admins see all); the Users page can add someone to every project at once.
+
+The policy lives in one place, `app/api/authz.py` (`POLICY` maps each route to
+a capability, `ROLE_CAPS` maps roles to capabilities), mirrored for the UI in
+`frontend/src/lib/permissions.ts`. Command-line user management:
+
+```bash
+docker compose exec app python scripts/create_user.py someone@example.com [--admin] [--member-email someone@example.com]
+```
+
+The demo seed creates `vp@`, `pm@`, `alice@` (tech lead) and `bob@` (developer)
+`demo.dev` logins with password `demo-password`.
 
 ## Per-commit code analysis (LLM)
 
@@ -134,3 +174,6 @@ FastAPI serves at `/` (the Docker image does this in a multi-stage build). Witho
 a build, unknown paths return a 503 hint — the API itself works fine.
 
 Migrations: `uv run alembic revision --autogenerate -m "msg"` then `alembic upgrade head`.
+
+Tests: `uv run pytest` (in-memory SQLite by default; set `TEST_DATABASE_URL` to an
+empty Postgres database to run against Postgres).

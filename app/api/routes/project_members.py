@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_or_404
 from app.db import get_db
-from app.models import Member, MemberIdentity, Project, ProjectMember
+from app.models import Member, MemberIdentity, Project, ProjectMember, User
 from app.schemas.member import (
     IdentityMappingIn,
     IdentityOut,
@@ -17,7 +17,9 @@ from app.schemas.member import (
     MemberSyncPreview,
     PlatformIdentities,
     ProjectMemberAdd,
+    ProjectMemberOut,
     ProjectMembersOut,
+    ProjectRoleIn,
 )
 from app.services import member_sync
 
@@ -33,13 +35,16 @@ PLATFORM_LABELS = [
 @router.get("/projects/{project_id}/members", response_model=ProjectMembersOut)
 def project_members(project_id: int, db: Session = Depends(get_db)):
     get_or_404(db, Project, project_id)
-    members = db.execute(
-        select(Member)
+    rows = db.execute(
+        select(Member, ProjectMember.role)
         .join(ProjectMember, ProjectMember.member_id == Member.id)
         .where(ProjectMember.project_id == project_id)
         .order_by(Member.display_name)
-    ).scalars().all()
-    member_ids = {m.id for m in members}
+    ).all()
+    member_ids = {m.id for m, _ in rows}
+    with_login = set(db.execute(
+        select(User.member_id).where(User.member_id.in_(member_ids or [-1]))
+    ).scalars())
     available = [
         m
         for m in db.execute(select(Member).order_by(Member.display_name)).scalars()
@@ -56,7 +61,13 @@ def project_members(project_id: int, db: Session = Depends(get_db)):
         by_platform.setdefault(ident.system.value, []).append(ident)
 
     return ProjectMembersOut(
-        members=[MemberOut.model_validate(m) for m in members],
+        members=[
+            ProjectMemberOut(
+                id=m.id, display_name=m.display_name, primary_email=m.primary_email,
+                role=role, has_login=m.id in with_login,
+            )
+            for m, role in rows
+        ],
         available=[MemberOut.model_validate(m) for m in available],
         identities=[
             PlatformIdentities(
@@ -81,9 +92,25 @@ def add_project_member(project_id: int, body: ProjectMemberAdd, db: Session = De
         )
     ).scalar_one_or_none()
     if exists is None:
-        db.add(ProjectMember(project_id=project_id, member_id=body.member_id))
+        db.add(ProjectMember(project_id=project_id, member_id=body.member_id, role=body.role))
         db.commit()
     return {"ok": True}
+
+
+@router.put("/projects/{project_id}/members/{member_id}/role", status_code=204)
+def set_project_role(
+    project_id: int, member_id: int, body: ProjectRoleIn, db: Session = Depends(get_db)
+):
+    """Change a member's role on this project."""
+    link = db.execute(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id, ProjectMember.member_id == member_id
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(404, "Member is not on this project")
+    link.role = body.role
+    db.commit()
 
 
 @router.delete("/projects/{project_id}/members/{member_id}", status_code=204)

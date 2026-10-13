@@ -15,6 +15,7 @@ from app.models.entities import (
     PokerVote,
     Project,
     ProjectMember,
+    ProjectRole,
     PullRequest,
     PRReview,
     ReferenceFile,
@@ -32,6 +33,8 @@ from app.models.entities import (
     SyncStatus,
     Task,
     TaskBreakdown,
+    User,
+    UserSession,
 )
 
 __all__ = [
@@ -42,6 +45,7 @@ __all__ = [
     "Member",
     "MemberIdentity",
     "ProjectMember",
+    "ProjectRole",
     "Sprint",
     "SprintMemberCapacity",
     "SprintSnapshot",
@@ -67,4 +71,6 @@ __all__ = [
     "TaskBreakdown",
     "SyncRun",
     "SyncStatus",
+    "User",
+    "UserSession",
 ]

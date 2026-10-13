@@ -21,6 +21,7 @@ import termios
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.api.authz import Cap, authorize_websocket
 from app.config import settings
 from app.db import get_db
 from app.models import Project
@@ -56,6 +57,8 @@ async def terminal_ws(ws: WebSocket, project_id: int):
     Binary WS frames are treated as keystrokes (written to the PTY); text frames
     are JSON control messages (currently only ``{"resize": {"cols", "rows"}}``).
     """
+    if not await authorize_websocket(ws, Cap.TERMINAL, project_id):
+        return
     await ws.accept()
 
     # Look up the project and build its scratch workdir before opening the PTY.

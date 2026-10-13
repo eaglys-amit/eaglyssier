@@ -13,6 +13,7 @@ from sqlalchemy import update
 
 from app import scheduler
 from app.api import api_router
+from app.api.routes import auth as auth_routes
 from app.config import settings
 from app.db import SessionLocal
 from app.models import (
@@ -24,6 +25,7 @@ from app.models import (
     SyncStatus,
     TaskBreakdown,
 )
+from app.services.auth import bootstrap_admin
 from app.storage import rustfs
 from app.web.routes import provider_ws, report_artifacts, terminal
 
@@ -175,6 +177,11 @@ def _reconcile_orphaned_syncs() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _reconcile_orphaned_syncs()
+    db = SessionLocal()
+    try:
+        bootstrap_admin(db)
+    finally:
+        db.close()
     try:
         rustfs.ensure_bucket()
     except Exception:  # noqa: BLE001 - storage may not be ready yet; created lazily on use
@@ -187,6 +194,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Eaglyssier", lifespan=lifespan)
 
+app.include_router(auth_routes.router)
 app.include_router(api_router)
 app.include_router(report_artifacts.router)
 app.include_router(provider_ws.router)

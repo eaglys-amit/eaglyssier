@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api, ApiError } from "@/lib/api";
+import { useAccess } from "@/lib/permissions";
 import { qk } from "@/lib/query-keys";
 import type { AnalysisScope } from "@/types/api";
 
@@ -21,12 +22,18 @@ function toggled(list: number[], id: number): number[] {
  *  active (memberId null), the scope is empty and edits are no-ops. */
 export function useMemberScope(projectId: number, memberId: number | null) {
   const qc = useQueryClient();
+  const access = useAccess(projectId);
+  // Scopes are people data: developers may read only their own, a VP none.
+  const readable =
+    memberId != null &&
+    access.can("people") &&
+    (access.seesAllPeople || memberId === access.memberId);
   const key = memberId != null ? qk.memberScope(projectId, memberId) : ["member-scope", "none"];
 
   const { data } = useQuery({
     queryKey: key,
     queryFn: () => api.get<AnalysisScope>(`/projects/${projectId}/members/${memberId}/scope`),
-    enabled: memberId != null,
+    enabled: readable,
   });
   const scope = data ?? EMPTY_SCOPE;
 

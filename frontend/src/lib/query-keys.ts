@@ -1,5 +1,10 @@
 /** Hierarchical query keys: invalidating ["projects", id] refreshes every sub-resource. */
 export const qk = {
+  me: ["auth", "me"] as const,
+  users: ["users"] as const,
+  // Cross-project; outside the ["projects", id] subtree on purpose, though a
+  // projects-list invalidation (prefix ["projects"]) doesn't reach it either.
+  portfolio: ["portfolio"] as const,
   projects: ["projects"] as const,
   project: (id: number) => ["projects", id] as const,
   sprints: (id: number) => ["projects", id, "sprints"] as const,

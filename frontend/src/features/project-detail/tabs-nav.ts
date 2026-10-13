@@ -15,6 +15,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import type { Cap } from "@/lib/permissions";
+
 /**
  * The project's analysis views — the tab strip at the top of the content column
  * and the title bar each tab opens with (see TabShell) read from this one list,
@@ -75,6 +77,7 @@ export const PROJECT_TABS = [
     label: "KPI",
     icon: BarChart3,
     blurb: "Per-member performance ratings drawn from their tasks and commits.",
+    cap: "people",
   },
   {
     key: "capacity",
@@ -87,18 +90,22 @@ export const PROJECT_TABS = [
     label: "Evaluation",
     icon: Star,
     blurb: "The evaluation sheet for each member, scored and kept with the project.",
+    cap: "people",
   },
   {
     key: "terminal",
     label: "Terminal",
     icon: SquareTerminal,
     blurb: "A shell session scoped to this project, running through the analysis provider.",
+    cap: "terminal",
   },
 ] as const satisfies ReadonlyArray<{
   key: string;
   label: string;
   icon: LucideIcon;
   blurb: string;
+  /** Capability needed to see the tab (default: "view"). */
+  cap?: Cap;
 }>;
 
 /**
@@ -134,6 +141,8 @@ export const OFF_STRIP_TABS = [
   label: string;
   icon: LucideIcon;
   blurb: string;
+  /** Capability needed to see the tab (default: "view"). */
+  cap?: Cap;
 }>;
 
 /**
@@ -146,6 +155,12 @@ export const ALL_TABS = [...PROJECT_TABS, ...OFF_STRIP_TABS];
 export type TabKey = (typeof ALL_TABS)[number]["key"];
 
 export const DEFAULT_TAB: TabKey = "data";
+
+/** The capability a tab needs; everything not marked is readable by any member. */
+export function tabCap(key: TabKey): Cap {
+  const tab = ALL_TABS.find((t) => t.key === key);
+  return tab && "cap" in tab ? tab.cap : "view";
+}
 
 export function isTabKey(value: string | undefined): value is TabKey {
   return ALL_TABS.some((t) => t.key === value);

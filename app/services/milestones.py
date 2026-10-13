@@ -723,8 +723,13 @@ def generate_from_sprints(
     )
 
 
-def build_roadmap(db: Session, project_id: int) -> RoadmapOut:
-    """The whole canvas in one fetch: milestones, sprint bands, and the domain."""
+def build_roadmap(
+    db: Session, project_id: int, *, velocity: VelocityOut | None = None
+) -> RoadmapOut:
+    """The whole canvas in one fetch: milestones, sprint bands, and the domain.
+
+    Pass `velocity` when the caller already has it (the portfolio does).
+    """
     today = date.today()
     project_sprints = list(
         db.execute(
@@ -736,7 +741,8 @@ def build_roadmap(db: Session, project_id: int) -> RoadmapOut:
     sprint_by_id = {s.id: s for s in project_sprints}
     sprint_days = _sprint_length_days(project_sprints)
     # Once for the whole roadmap, not once per milestone.
-    velocity = burndown_svc.build_velocity(db, project_id)
+    if velocity is None:
+        velocity = burndown_svc.build_velocity(db, project_id)
 
     milestones = [
         build_milestone(

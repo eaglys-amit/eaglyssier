@@ -1,8 +1,9 @@
 """JSON API consumed by the React SPA."""
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.authz import authorize
 from app.api.routes import (
     analysis,
     backlog,
@@ -17,6 +18,7 @@ from app.api.routes import (
     members,
     milestones,
     poker,
+    portfolio,
     project_members,
     projects,
     provider,
@@ -27,9 +29,12 @@ from app.api.routes import (
     settings,
     sprints,
     sync,
+    users,
 )
 
-api_router = APIRouter(prefix="/api")
+# Every route below requires a login and passes the role policy in app.api.authz.
+# Login/logout live in app.api.routes.auth, mounted beside this router.
+api_router = APIRouter(prefix="/api", dependencies=[Depends(authorize)])
 for _r in (
     projects.router,
     members.router,
@@ -60,5 +65,8 @@ for _r in (
     # Per-repo documentation sets: written from the repo summary and commit
     # analyses above, plus whichever reference documents the user picks.
     repo_docs.router,
+    users.router,
+    # Every visible project's health on one screen (the VP's landing page).
+    portfolio.router,
 ):
     api_router.include_router(_r)

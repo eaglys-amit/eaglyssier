@@ -16,6 +16,7 @@ import termios
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.api.authz import Cap, authorize_websocket
 from app.config import settings
 from app.services.analyzers.claude_cli import ensure_onboarding_complete
 
@@ -29,6 +30,8 @@ async def login_ws(ws: WebSocket):
     The CLI prints an OAuth URL; the user authorizes in their browser and pastes
     the code back into the terminal, which we forward to the process's stdin.
     """
+    if not await authorize_websocket(ws, Cap.ADMIN):
+        return
     await ws.accept()
     ensure_onboarding_complete()  # setup-token shouldn't detour through first-run onboarding
     master, slave = pty.openpty()

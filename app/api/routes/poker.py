@@ -5,9 +5,10 @@ withholds vote values while a round is still open — see app.services.poker.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.authz import Access, get_access
 from app.api.deps import get_or_404
 from app.db import get_db
 from app.models import PokerSession, Project
@@ -157,12 +158,19 @@ def open_poker_round(
 
 
 @router.post("/poker/rounds/{round_id}/vote", response_model=PokerRoundOut)
-def cast_poker_vote(round_id: int, body: PokerVoteIn, db: Session = Depends(get_db)):
+def cast_poker_vote(
+    round_id: int,
+    body: PokerVoteIn,
+    db: Session = Depends(get_db),
+    access: Access = Depends(get_access),
+):
     """Upsert the caller's card. 409 once the round has been revealed.
 
     Returns the round with values still withheld — casting a vote must not leak
     what everyone else picked.
     """
+    if not access.is_admin and body.member_id != access.member_id:
+        raise HTTPException(403, "You can only vote as yourself")
     row = poker_svc.cast_vote(db, round_id, body)
     return poker_svc.round_out(row, revealed=False, for_member_id=body.member_id)
 

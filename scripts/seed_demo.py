@@ -4,6 +4,8 @@ Creates a project, curated members added to the project, project-scoped identity
 mappings (Jira + GitHub accounts mapped to those members), one closed sprint,
 tasks with story points and worklogs, a git repo with commits and a PR+review,
 and a deliverable. Synced-style rows are attributed via the mapped identities.
+Also creates one login per project role (password DEMO_PASSWORD below):
+vp@, pm@, alice@ (tech lead) and bob@ (developer) — all @demo.dev.
 
 Run inside the app container:  python scripts/seed_demo.py
 Then open the app, generate a report for the demo sprint, and check the numbers.
@@ -24,14 +26,18 @@ from app.models import (
     MemberIdentity,
     Project,
     ProjectMember,
+    ProjectRole,
     PRReview,
     PullRequest,
     Sprint,
     StatusCategory,
     Task,
+    User,
 )
+from app.services.auth import hash_password
 
 DEMO_KEY = "DEMO"
+DEMO_PASSWORD = "demo-password"
 
 
 def _identity(db, project_id, member, system, external_id, username=None) -> MemberIdentity:
@@ -61,13 +67,25 @@ def main() -> None:
         # curated members
         alice = Member(display_name="Alice Chen", primary_email="alice@demo.dev")
         bob = Member(display_name="Bob Ortiz", primary_email="bob@demo.dev")
-        db.add_all([alice, bob])
+        vp = Member(display_name="Vera Park", primary_email="vp@demo.dev")
+        pm = Member(display_name="Paul Mori", primary_email="pm@demo.dev")
+        db.add_all([alice, bob, vp, pm])
         db.flush()
-        # add them to the project
+        # add them to the project, one per role
+        roles = {
+            alice: ProjectRole.tech_lead, bob: ProjectRole.developer,
+            vp: ProjectRole.vp_product, pm: ProjectRole.project_manager,
+        }
         db.add_all([
-            ProjectMember(project_id=project.id, member_id=alice.id),
-            ProjectMember(project_id=project.id, member_id=bob.id),
+            ProjectMember(project_id=project.id, member_id=m.id, role=r.value)
+            for m, r in roles.items()
         ])
+        # a login for each, unless one already exists from an earlier seed
+        for m in roles:
+            if db.execute(select(User).where(User.email == m.primary_email)).scalar_one_or_none():
+                continue
+            db.add(User(email=m.primary_email, password_hash=hash_password(DEMO_PASSWORD),
+                        member_id=m.id))
         # project-scoped discovered accounts, mapped to the members
         jira_ident = {
             alice.id: _identity(db, project.id, alice, IntegrationType.jira, "jira-alice"),
@@ -146,6 +164,7 @@ def main() -> None:
         db.commit()
         print(f"Seeded demo project id={project.id}, sprint id={sprint.id}.")
         print("Open /projects, then generate a report for 'Sprint 7'.")
+        print(f"Demo logins (password '{DEMO_PASSWORD}'): vp@, pm@, alice@, bob@demo.dev")
     finally:
         db.close()
 

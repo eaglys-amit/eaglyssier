@@ -32,8 +32,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api, ApiError } from "@/lib/api";
+import { ROLE_LABELS, ROLES, useAccess } from "@/lib/permissions";
 import { qk } from "@/lib/query-keys";
-import type { Identity, ProjectMembers } from "@/types/api";
+import type { Identity, ProjectMembers, ProjectRole } from "@/types/api";
 
 import { SyncMembersDialog } from "./members/SyncMembersDialog";
 
@@ -42,6 +43,8 @@ const UNMAPPED = "__none__";
 export function ProjectMembersTab({ projectId }: { projectId: number }) {
   const qc = useQueryClient();
   const [pick, setPick] = useState("");
+  const access = useAccess(projectId);
+  const manage = access.can("members");
   const { data } = useQuery({
     queryKey: qk.projectMembers(projectId),
     queryFn: () => api.get<ProjectMembers>(`/projects/${projectId}/members`),
@@ -68,6 +71,17 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
       toast.success("Member removed from project");
     },
     onError: (err: ApiError) => toast.error(err.detail || "Could not remove member"),
+  });
+  const setRole = useMutation({
+    mutationFn: ({ memberId, role }: { memberId: number; role: ProjectRole }) =>
+      api.put(`/projects/${projectId}/members/${memberId}/role`, { role }),
+    onSuccess: (_, { memberId }) => {
+      invalidate();
+      // Changing your own role changes what this UI should offer you.
+      if (memberId === access.memberId) qc.invalidateQueries({ queryKey: qk.me });
+      toast.success("Role updated");
+    },
+    onError: (err: ApiError) => toast.error(err.detail || "Could not change role"),
   });
   const map = useMutation({
     mutationFn: ({ identityId, memberId }: { identityId: number; memberId: number | null }) =>
@@ -108,6 +122,7 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {manage ? (
           <div className="flex items-center gap-2">
             <Select value={pick} onValueChange={setPick}>
               <SelectTrigger className="w-64">
@@ -135,6 +150,7 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
               <UserPlus className="size-4" /> Add
             </Button>
           </div>
+          ) : null}
 
           {!data.members.length ? (
             <EmptyState
@@ -147,6 +163,7 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Member</TableHead>
+                  <TableHead className="w-48">Role</TableHead>
                   <TableHead>Mapped accounts</TableHead>
                   <TableHead className="w-20 text-right" />
                 </TableRow>
@@ -154,7 +171,37 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
               <TableBody>
                 {data.members.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className="font-medium">{m.display_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {m.display_name}
+                      {!m.has_login ? (
+                        <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                          (no login)
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      {manage ? (
+                        <Select
+                          value={m.role}
+                          onValueChange={(v) =>
+                            setRole.mutate({ memberId: m.id, role: v as ProjectRole })
+                          }
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ROLES.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                {ROLE_LABELS[r]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-sm">{ROLE_LABELS[m.role]}</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {(accountsByMember.get(m.id) ?? []).map((label) => (
@@ -168,6 +215,7 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
+                      {manage ? (
                       <ConfirmDialog
                         trigger={
                           <Button
@@ -184,6 +232,7 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
                         confirmLabel="Remove"
                         onConfirm={() => remove.mutate(m.id)}
                       />
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -202,7 +251,7 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
               their tasks, commits, and reviews — or match them all at once.
             </p>
           </div>
-          {data.identities.length ? <SyncMembersDialog projectId={projectId} /> : null}
+          {manage && data.identities.length ? <SyncMembersDialog projectId={projectId} /> : null}
         </div>
         {!data.identities.length ? (
           <EmptyState
@@ -247,6 +296,7 @@ export function ProjectMembersTab({ projectId }: { projectId: number }) {
                           </TableCell>
                           <TableCell>
                             <Select
+                              disabled={!manage}
                               value={acc.member_id != null ? String(acc.member_id) : UNMAPPED}
                               onValueChange={(v) =>
                                 map.mutate({
